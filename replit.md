@@ -33,7 +33,7 @@ Preferred communication style: Simple, everyday language.
 - **ORM**: Drizzle ORM with PostgreSQL dialect
 - **Schema Location**: `shared/schema.ts` (shared between frontend and backend)
 - **Migrations**: Drizzle Kit with `db:push` command
-- **Key Tables**: users, sessions, ingredient_memory, meal_plans, meal_plan_days, recipes, shopping_lists, shopping_list_items, kitchen_conversations, kitchen_messages
+- **Key Tables**: users, sessions, ingredient_memory, meal_plans, meal_plan_days, recipes, shopping_lists, shopping_list_items, kitchen_conversations, kitchen_messages, cookbook_recipes
 
 ### AI/Chat System
 - **Streaming**: Server-Sent Events for real-time AI responses
@@ -42,11 +42,20 @@ Preferred communication style: Simple, everyday language.
 - **Ingredient Memory**: Soft inventory inferred from conversations with confidence scores
 - **Recipe Chat**: Stateless conversation for individual recipe pages (allows asking questions and swapping meals)
 
+### Master Cookbook Feature
+- **Cookbook Table**: cookbook_recipes stores saved recipes per user with title, content, and imagePrompt
+- **Save to Cookbook**: Recipe pages have a save button (BookmarkPlus icon) that saves the recipe with its image prompt
+- **Cookbook Browsing**: /cookbook page displays saved recipes with expand/collapse and on-demand image regeneration
+- **Cookbook as RAG Context**: AI chat and meal planning include cookbook recipes (titles + content previews) for consistency
+- **Image Optimization**: Stores generation prompts instead of base64 images; regenerates on-demand to save database space
+
 ### Recent Changes (Jan 2026)
+- Added master cookbook feature for saving and reusing recipes across sessions
+- Image storage migrated from base64 to storing prompts (recipeImagePrompt field)
 - Added recipe detail page (/recipe/:dayId) with dedicated chat interface for viewing and editing meals
 - **Recipe auto-generation**: Full recipe is automatically generated and displayed when clicking a meal card
 - **AI-generated food photography**: Photorealistic image of each dish is generated and displayed at the top of the recipe page
-- Recipe content and images are cached in database (recipeContent, recipeImageUrl fields) for instant loading on repeat visits
+- Recipe content and image prompts cached in database for instant loading on repeat visits
 - Enhanced meal plan flow: clickable meal cards now navigate to recipe detail pages
 - Added security checks: meal plan day routes verify user ownership via getMealPlanDayWithOwner
 - Fixed SSE streaming parser with buffering to handle chunked network data correctly
