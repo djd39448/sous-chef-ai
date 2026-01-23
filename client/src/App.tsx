@@ -11,12 +11,14 @@ import Landing from "@/pages/landing";
 import Chat from "@/pages/chat";
 import MealPlan from "@/pages/meal-plan";
 import Shopping from "@/pages/shopping";
+import Recipe from "@/pages/recipe";
 
 function AuthenticatedRoutes() {
   return (
     <Switch>
       <Route path="/" component={Chat} />
       <Route path="/plan" component={MealPlan} />
+      <Route path="/recipe/:dayId" component={Recipe} />
       <Route path="/shopping" component={Shopping} />
       <Route component={NotFound} />
     </Switch>

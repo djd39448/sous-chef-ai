@@ -240,6 +240,129 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/kitchen/meal-plan-day/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const dayId = parseInt(req.params.id, 10);
+      if (isNaN(dayId)) return res.status(400).json({ error: "Invalid day ID" });
+
+      const day = await storage.getMealPlanDayWithOwner(dayId);
+      if (!day) return res.status(404).json({ error: "Day not found" });
+      if (day.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+
+      res.json(day);
+    } catch (error) {
+      console.error("Error fetching meal plan day:", error);
+      res.status(500).json({ error: "Failed to fetch meal plan day" });
+    }
+  });
+
+  app.post("/api/kitchen/recipe-message", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { content, dayId, mealName, dayName } = req.body;
+      if (!content || !dayId) return res.status(400).json({ error: "Content and dayId required" });
+
+      const day = await storage.getMealPlanDayWithOwner(dayId);
+      if (!day) return res.status(404).json({ error: "Day not found" });
+      if (day.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const systemPrompt = `You are a helpful sous chef assistant focused on a specific recipe: ${mealName} for ${dayName}.
+
+Your capabilities:
+1. Provide the full recipe with ingredients and step-by-step instructions
+2. Answer questions about cooking techniques, substitutions, and tips
+3. Replace this meal with a different one if the user asks
+
+When providing a recipe, format it nicely with:
+- A brief description
+- Prep and cook time
+- Ingredients list (with quantities)
+- Numbered instructions
+
+If the user wants to swap this meal for something else, call the update_meal function.
+
+Keep responses friendly and practical. Default to family-friendly, 30-minute meals unless asked otherwise.`;
+
+      const messages = [
+        { role: "system" as const, content: systemPrompt },
+        { role: "user" as const, content }
+      ];
+
+      let fullResponse = "";
+      let updatedMeal = null;
+
+      const recipeTools: any[] = [
+        {
+          type: "function",
+          function: {
+            name: "update_meal",
+            description: "Update this day's meal to a different dish. Call when the user wants to swap or replace the current meal.",
+            parameters: {
+              type: "object",
+              properties: {
+                mealName: { type: "string", description: "The new meal name" },
+                notes: { type: "string", description: "Brief notes about the meal (cook time, etc.)" }
+              },
+              required: ["mealName"]
+            }
+          }
+        }
+      ];
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4.1",
+        messages,
+        tools: recipeTools,
+        stream: true,
+      });
+
+      for await (const chunk of response) {
+        const delta = chunk.choices[0]?.delta;
+        
+        if (delta?.content) {
+          fullResponse += delta.content;
+          res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
+        }
+
+        if (delta?.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            if (tc.function?.name === "update_meal") {
+              try {
+                const argsStr = tc.function.arguments || "";
+                const args = JSON.parse(argsStr);
+                await storage.updateMealPlanDay(dayId, {
+                  mealName: args.mealName,
+                  notes: args.notes || null,
+                });
+                updatedMeal = { mealName: args.mealName, notes: args.notes };
+              } catch {}
+            }
+          }
+        }
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true, updatedMeal })}\n\n`);
+      res.end();
+    } catch (error) {
+      console.error("Error processing recipe message:", error);
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: "Failed to process message" })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ error: "Failed to process message" });
+      }
+    }
+  });
+
   // =============== SHOPPING LIST ===============
   app.get("/api/kitchen/shopping-list", isAuthenticated, async (req: Request, res: Response) => {
     try {

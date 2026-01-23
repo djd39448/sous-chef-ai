@@ -17,6 +17,8 @@ export interface IStorage {
 
   // Meal Plans
   getMealPlan(userId: string): Promise<(MealPlan & { days: MealPlanDay[] }) | null>;
+  getMealPlanDay(id: number): Promise<MealPlanDay | null>;
+  getMealPlanDayWithOwner(id: number): Promise<(MealPlanDay & { userId: string }) | null>;
   createMealPlan(data: InsertMealPlan): Promise<MealPlan>;
   addMealPlanDay(data: InsertMealPlanDay): Promise<MealPlanDay>;
   updateMealPlanDay(id: number, data: Partial<InsertMealPlanDay>): Promise<MealPlanDay>;
@@ -95,6 +97,29 @@ export class DatabaseStorage implements IStorage {
       .where(eq(mealPlanDays.mealPlanId, plan.id));
 
     return { ...plan, days };
+  }
+
+  async getMealPlanDay(id: number): Promise<MealPlanDay | null> {
+    const [day] = await db.select().from(mealPlanDays).where(eq(mealPlanDays.id, id));
+    return day || null;
+  }
+
+  async getMealPlanDayWithOwner(id: number): Promise<(MealPlanDay & { userId: string }) | null> {
+    const result = await db
+      .select({
+        id: mealPlanDays.id,
+        mealPlanId: mealPlanDays.mealPlanId,
+        dayOfWeek: mealPlanDays.dayOfWeek,
+        recipeId: mealPlanDays.recipeId,
+        mealName: mealPlanDays.mealName,
+        notes: mealPlanDays.notes,
+        userId: mealPlans.userId,
+      })
+      .from(mealPlanDays)
+      .innerJoin(mealPlans, eq(mealPlanDays.mealPlanId, mealPlans.id))
+      .where(eq(mealPlanDays.id, id));
+    
+    return result[0] || null;
   }
 
   async createMealPlan(data: InsertMealPlan): Promise<MealPlan> {

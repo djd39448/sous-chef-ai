@@ -94,8 +94,8 @@ export default function MealPlan() {
     return order.indexOf(a.dayOfWeek) - order.indexOf(b.dayOfWeek);
   });
 
-  const handleDayClick = (dayName: string) => {
-    navigate(`/?prompt=Change ${dayName}'s meal to something else`);
+  const handleDayClick = (dayId: number) => {
+    navigate(`/recipe/${dayId}`);
   };
 
   return (
@@ -137,7 +137,7 @@ export default function MealPlan() {
                       day={DAY_NAMES[day.dayOfWeek]}
                       mealName={day.mealName}
                       notes={day.notes}
-                      onClick={() => handleDayClick(DAY_NAMES[day.dayOfWeek])}
+                      onClick={() => handleDayClick(day.id)}
                     />
                   ))}
                 </div>
