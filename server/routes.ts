@@ -317,35 +317,12 @@ Keep it family-friendly and aim for 30 minutes or less. Be specific with measure
         }
       }
 
-      // Save recipe to database
-      await storage.updateMealPlanDay(dayId, { recipeContent: fullRecipe });
+      // Save recipe to database with image prompt (but don't generate image yet)
+      const imagePrompt = `Professional food photography of ${day.mealName}. Photorealistic, appetizing presentation, warm lighting, shallow depth of field, garnished beautifully, served on a nice plate, restaurant quality presentation.`;
+      await storage.updateMealPlanDay(dayId, { recipeContent: fullRecipe, recipeImagePrompt: imagePrompt });
 
-      // Generate image of the dish
-      res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
-      
-      try {
-        const imagePrompt = `Professional food photography of ${day.mealName}. Photorealistic, appetizing presentation, warm lighting, shallow depth of field, garnished beautifully, served on a nice plate, restaurant quality presentation.`;
-        
-        const imageResponse = await openai.images.generate({
-          model: "gpt-image-1",
-          prompt: imagePrompt,
-          n: 1,
-          size: "1024x1024",
-        });
-
-        const imageBase64 = imageResponse.data?.[0]?.b64_json;
-        if (imageBase64) {
-          const imageDataUrl = `data:image/png;base64,${imageBase64}`;
-          // Store the prompt, not the base64 (to save space)
-          await storage.updateMealPlanDay(dayId, { recipeImagePrompt: imagePrompt });
-          res.write(`data: ${JSON.stringify({ imageUrl: imageDataUrl, imagePrompt })}\n\n`);
-        }
-      } catch (imgError) {
-        console.error("Error generating image:", imgError);
-        // Continue without image - it's not critical
-      }
-
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      // Send the image prompt so client can generate on demand
+      res.write(`data: ${JSON.stringify({ imagePrompt, done: true })}\n\n`);
       res.end();
     } catch (error) {
       console.error("Error generating recipe:", error);

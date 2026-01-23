@@ -9,7 +9,7 @@ import { ChatMessage, TypingIndicator } from "@/components/chat-message";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, RefreshCw, BookPlus, Check } from "lucide-react";
+import { ArrowLeft, RefreshCw, BookPlus, Check, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface RecipeMessage {
@@ -100,20 +100,19 @@ export default function Recipe() {
     }
   };
 
-  // Auto-generate recipe when page loads
+  // Auto-generate recipe when page loads (but not the image)
   useEffect(() => {
     if (day && !recipeGenerated && !isGeneratingRecipe) {
       if (day.recipeContent) {
         // Already have recipe cached
         setRecipeContent(day.recipeContent);
         setRecipeGenerated(true);
-        // If we have a saved image prompt, regenerate the image
-        if (day.recipeImagePrompt && !recipeImageUrl) {
+        // Save the image prompt but don't auto-generate
+        if (day.recipeImagePrompt) {
           setImagePrompt(day.recipeImagePrompt);
-          regenerateImageFromPrompt(day.recipeImagePrompt);
         }
       } else {
-        // Generate new recipe
+        // Generate new recipe (but not image)
         generateRecipe();
       }
     }
@@ -368,10 +367,10 @@ export default function Recipe() {
       <ScrollArea className="flex-1" ref={scrollRef}>
         <div className="max-w-2xl mx-auto px-4 py-4 pb-32">
           {/* Recipe Image */}
-          {(recipeImageUrl || isGeneratingImage) && (
+          {(recipeImageUrl || isGeneratingImage || imagePrompt) && (
             <Card className="mb-4 overflow-hidden">
               {isGeneratingImage && !recipeImageUrl ? (
-                <div className="aspect-square bg-muted flex items-center justify-center">
+                <div className="aspect-video bg-muted flex items-center justify-center">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <RefreshCw className="h-6 w-6 animate-spin" />
                     <span className="text-sm">Creating photo...</span>
@@ -381,9 +380,20 @@ export default function Recipe() {
                 <img 
                   src={recipeImageUrl} 
                   alt={day.mealName}
-                  className="w-full aspect-square object-cover"
+                  className="w-full aspect-video object-cover"
                   data-testid="recipe-image"
                 />
+              ) : imagePrompt ? (
+                <button
+                  onClick={() => regenerateImageFromPrompt(imagePrompt)}
+                  className="w-full aspect-video bg-muted flex items-center justify-center hover-elevate cursor-pointer transition-colors"
+                  data-testid="button-generate-image"
+                >
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <Camera className="h-8 w-8" />
+                    <span className="text-sm font-medium">Tap to generate photo</span>
+                  </div>
+                </button>
               ) : null}
             </Card>
           )}
