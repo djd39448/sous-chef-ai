@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChefHat, Trash2, RefreshCw, BookOpen } from "lucide-react";
+import { ChefHat, Trash2, RefreshCw, BookOpen, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
 interface CookbookRecipe {
@@ -24,9 +25,17 @@ export default function Cookbook() {
   const [expandedRecipe, setExpandedRecipe] = useState<number | null>(null);
   const [loadingImage, setLoadingImage] = useState<number | null>(null);
   const [recipeImages, setRecipeImages] = useState<Record<number, string>>({});
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: recipes, isLoading } = useQuery<CookbookRecipe[]>({
     queryKey: ["/api/kitchen/cookbook"],
+  });
+
+  const filteredRecipes = recipes?.filter(recipe => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return recipe.title.toLowerCase().includes(query) || 
+           recipe.content.toLowerCase().includes(query);
   });
 
   const deleteMutation = useMutation({
@@ -74,7 +83,7 @@ export default function Cookbook() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="px-4 py-4 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10">
+      <header className="px-4 py-3 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10 space-y-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
             <BookOpen className="h-5 w-5 text-primary-foreground" />
@@ -86,6 +95,29 @@ export default function Cookbook() {
             </p>
           </div>
         </div>
+        {recipes && recipes.length > 0 && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search recipes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-9"
+              data-testid="input-search-cookbook"
+            />
+            {searchQuery && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                onClick={() => setSearchQuery("")}
+                data-testid="button-clear-search"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        )}
       </header>
 
       <ScrollArea className="flex-1">
@@ -99,9 +131,9 @@ export default function Cookbook() {
                 </Card>
               ))}
             </div>
-          ) : recipes && recipes.length > 0 ? (
+          ) : filteredRecipes && filteredRecipes.length > 0 ? (
             <div className="space-y-4">
-              {recipes.map((recipe) => (
+              {filteredRecipes.map((recipe) => (
                 <Card key={recipe.id} className="overflow-hidden">
                   <div 
                     className="p-4 cursor-pointer hover-elevate"
@@ -182,6 +214,16 @@ export default function Cookbook() {
                   )}
                 </Card>
               ))}
+            </div>
+          ) : searchQuery && recipes && recipes.length > 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                <Search className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold mb-2">No matching recipes</h3>
+              <p className="text-muted-foreground text-sm max-w-xs">
+                Try a different search term or clear the search.
+              </p>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-center">
