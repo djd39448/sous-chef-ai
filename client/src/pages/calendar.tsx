@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CalendarDays, ChevronLeft, ChevronRight, UtensilsCrossed, ShoppingCart } from "lucide-react";
-import { format, addWeeks, subWeeks, startOfWeek, parseISO, isSameWeek } from "date-fns";
+import { format, addDays, addWeeks, subWeeks, startOfWeek, parseISO, isSameWeek } from "date-fns";
 
 interface MealPlan {
   id: number;
@@ -54,7 +54,7 @@ export default function Calendar() {
   const [currentWeek, setCurrentWeek] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   
   const weekStartDate = getWeekStartDate(currentWeek);
-  const weekEndDate = format(addWeeks(currentWeek, 1), "MMM d");
+  const weekEndDate = format(addDays(currentWeek, 6), "MMM d");
   const weekLabel = `${format(currentWeek, "MMM d")} - ${weekEndDate}`;
   const isCurrentWeek = isSameWeek(currentWeek, new Date(), { weekStartsOn: 1 });
 
@@ -159,11 +159,11 @@ export default function Calendar() {
                 </div>
                 
                 <div className="space-y-2">
-                  {FULL_DAY_NAMES.map((dayName, dayOfWeek) => {
-                    const adjustedIndex = dayOfWeek === 0 ? 0 : dayOfWeek;
-                    const meal = weekData.mealPlan?.days.find(d => d.dayOfWeek === adjustedIndex);
-                    const dayDate = addWeeks(currentWeek, 0);
-                    dayDate.setDate(currentWeek.getDate() + (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+                  {[1, 2, 3, 4, 5, 6, 0].map((dayOfWeek, index) => {
+                    const meal = weekData.mealPlan?.days.find(d => d.dayOfWeek === dayOfWeek);
+                    const dayDate = addDays(currentWeek, index);
+                    const dayName = FULL_DAY_NAMES[dayOfWeek];
+                    const shortDayName = DAY_NAMES[dayOfWeek];
                     
                     return (
                       <div
@@ -173,7 +173,7 @@ export default function Calendar() {
                         data-testid={`calendar-day-${dayOfWeek}`}
                       >
                         <div className="w-12 text-center">
-                          <p className="text-xs text-muted-foreground">{DAY_NAMES[dayOfWeek]}</p>
+                          <p className="text-xs text-muted-foreground">{shortDayName}</p>
                           <p className="font-medium">{format(dayDate, "d")}</p>
                         </div>
                         <div className="flex-1 min-w-0">
