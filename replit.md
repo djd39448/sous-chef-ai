@@ -59,6 +59,10 @@ Preferred communication style: Simple, everyday language.
 - **Backward Compatibility**: Legacy ingredient_memory and shopping_list_items tables still updated alongside CFO
 
 ### Recent Changes (Jan 2026)
+- Added week navigation to Plan tab for viewing/creating plans for any week (past, current, future)
+- Added monthly calendar view with week-at-a-glance showing which weeks have meal plans
+- Improved AI meal plan generation with better JSON parsing and randomized fallback meals
+- Calendar supports creating meal plans directly for any week
 - Added master cookbook feature for saving and reusing recipes across sessions
 - Image storage migrated from base64 to storing prompts (recipeImagePrompt field)
 - Added recipe detail page (/recipe/:dayId) with dedicated chat interface for viewing and editing meals
