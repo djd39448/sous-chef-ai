@@ -175,6 +175,38 @@ export async function registerRoutes(
     }
   });
 
+  // Calendar endpoints for viewing history and future plans
+  app.get("/api/kitchen/calendar", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const mealPlans = await storage.getAllMealPlans(userId);
+      const shoppingLists = await storage.getAllShoppingLists(userId);
+      
+      res.json({ mealPlans, shoppingLists });
+    } catch (error) {
+      console.error("Error fetching calendar:", error);
+      res.status(500).json({ error: "Failed to fetch calendar" });
+    }
+  });
+
+  app.get("/api/kitchen/week/:weekStartDate", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const weekStartDate = req.params.weekStartDate as string;
+      const mealPlan = await storage.getMealPlanByWeek(userId, weekStartDate);
+      const shoppingList = await storage.getShoppingListByWeek(userId, weekStartDate);
+      
+      res.json({ mealPlan, shoppingList });
+    } catch (error) {
+      console.error("Error fetching week data:", error);
+      res.status(500).json({ error: "Failed to fetch week data" });
+    }
+  });
+
   app.post("/api/kitchen/generate-meal-plan", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = (req.user as any)?.claims?.sub;
@@ -289,14 +321,24 @@ export async function registerRoutes(
 
       const systemPrompt = `You are a helpful sous chef. Generate a complete, easy-to-follow recipe for: ${day.mealName}
 
-Format the recipe with:
-- A brief appetizing description (1-2 sentences)
-- Prep Time and Cook Time
-- Serves (number of portions)
-- Ingredients list with quantities
-- Step-by-step numbered instructions
+Use this EXACT format:
 
-Keep it family-friendly and aim for 30 minutes or less. Be specific with measurements and temperatures.`;
+# ${day.mealName}
+[1-2 sentence appetizing description]
+
+**Prep Time:** X minutes | **Cook Time:** X minutes | **Serves:** X
+
+## Ingredients
+- [quantity] [ingredient in lowercase singular form]
+
+## Instructions
+1. [Step with specific temperatures and times]
+2. [Step]
+
+## Tips
+- [Optional helpful tip]
+
+Keep it family-friendly and aim for 30 minutes or less. Use lowercase singular ingredient names (e.g., "chicken breast" not "Chicken Breasts").`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4.1",
@@ -676,9 +718,11 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
   return httpServer;
 }
 
-function getWeekStartDate(): Date {
-  const now = new Date();
+function getWeekStartDate(targetDate?: Date): string {
+  const now = targetDate || new Date();
   const dayOfWeek = now.getDay();
   const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-  return new Date(now.setDate(diff));
+  const weekStart = new Date(now);
+  weekStart.setDate(diff);
+  return weekStart.toISOString().split('T')[0];
 }

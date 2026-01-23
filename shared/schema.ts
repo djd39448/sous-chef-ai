@@ -1,11 +1,51 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, timestamp, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, timestamp, real, jsonb, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Re-export auth models
 export * from "./models/auth";
 export * from "./models/chat";
+
+// ============= STANDARDIZED FORMATS =============
+// These formats ensure consistency across the app and efficient AI context
+
+/**
+ * INGREDIENT FORMAT:
+ * - Lowercase, singular form (e.g., "chicken breast" not "Chicken Breasts")
+ * - Standard categories: produce, dairy, meat, seafood, pantry, frozen, bakery, other
+ * - Quantity format: "[amount] [unit]" (e.g., "2 lbs", "1 cup", "3 medium")
+ * 
+ * RECIPE FORMAT (Markdown):
+ * # Recipe Name
+ * [1-2 sentence description]
+ * 
+ * **Prep Time:** X minutes | **Cook Time:** X minutes | **Serves:** X
+ * 
+ * ## Ingredients
+ * - [quantity] [ingredient]
+ * 
+ * ## Instructions
+ * 1. [Step]
+ * 2. [Step]
+ * 
+ * ## Tips (optional)
+ * - [Tip]
+ */
+
+export const INGREDIENT_CATEGORIES = [
+  "produce",
+  "dairy", 
+  "meat",
+  "seafood",
+  "pantry",
+  "frozen",
+  "bakery",
+  "beverages",
+  "other"
+] as const;
+
+export type IngredientCategory = typeof INGREDIENT_CATEGORIES[number];
 
 // ============= INGREDIENT MEMORY =============
 export const ingredientMemory = pgTable("ingredient_memory", {
@@ -30,7 +70,7 @@ export type InsertIngredientMemory = z.infer<typeof insertIngredientMemorySchema
 export const mealPlans = pgTable("meal_plans", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),
-  weekStartDate: timestamp("week_start_date").notNull(),
+  weekStartDate: date("week_start_date").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -105,6 +145,8 @@ export const shoppingLists = pgTable("shopping_lists", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),
   name: text("name").notNull(),
+  weekStartDate: date("week_start_date"),
+  mealPlanId: integer("meal_plan_id").references(() => mealPlans.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

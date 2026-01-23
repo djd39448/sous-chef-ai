@@ -1,9 +1,10 @@
 import { useLocation } from "wouter";
-import { MessageCircle, Calendar, ShoppingCart, BookOpen } from "lucide-react";
+import { MessageCircle, UtensilsCrossed, CalendarDays, ShoppingCart, BookOpen } from "lucide-react";
 
 const navItems = [
   { href: "/", icon: MessageCircle, label: "Chat" },
-  { href: "/plan", icon: Calendar, label: "Plan" },
+  { href: "/plan", icon: UtensilsCrossed, label: "Plan" },
+  { href: "/calendar", icon: CalendarDays, label: "Calendar" },
   { href: "/cookbook", icon: BookOpen, label: "Cookbook" },
   { href: "/shopping", icon: ShoppingCart, label: "Shop" },
 ];

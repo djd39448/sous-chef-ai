@@ -18,12 +18,16 @@ export interface IStorage {
 
   // Meal Plans
   getMealPlan(userId: string): Promise<(MealPlan & { days: MealPlanDay[] }) | null>;
+  getMealPlanByWeek(userId: string, weekStartDate: string): Promise<(MealPlan & { days: MealPlanDay[] }) | null>;
+  getAllMealPlans(userId: string): Promise<MealPlan[]>;
   getMealPlanDay(id: number): Promise<MealPlanDay | null>;
   getMealPlanDayWithOwner(id: number): Promise<(MealPlanDay & { userId: string }) | null>;
   createMealPlan(data: InsertMealPlan): Promise<MealPlan>;
+  createMealPlanForWeek(data: InsertMealPlan): Promise<MealPlan>;
   addMealPlanDay(data: InsertMealPlanDay): Promise<MealPlanDay>;
   updateMealPlanDay(id: number, data: Partial<InsertMealPlanDay>): Promise<MealPlanDay>;
   deleteMealPlan(userId: string): Promise<void>;
+  deleteMealPlanById(id: number): Promise<void>;
 
   // Recipes
   getRecipes(userId: string): Promise<Recipe[]>;
@@ -39,6 +43,8 @@ export interface IStorage {
 
   // Shopping Lists
   getShoppingList(userId: string): Promise<(ShoppingList & { items: ShoppingListItem[] }) | null>;
+  getShoppingListByWeek(userId: string, weekStartDate: string): Promise<(ShoppingList & { items: ShoppingListItem[] }) | null>;
+  getAllShoppingLists(userId: string): Promise<ShoppingList[]>;
   createShoppingList(data: InsertShoppingList): Promise<ShoppingList>;
   addShoppingListItem(data: InsertShoppingListItem): Promise<ShoppingListItem>;
   updateShoppingListItem(id: number, data: Partial<InsertShoppingListItem>): Promise<ShoppingListItem>;
@@ -106,6 +112,27 @@ export class DatabaseStorage implements IStorage {
     return { ...plan, days };
   }
 
+  async getMealPlanByWeek(userId: string, weekStartDate: string): Promise<(MealPlan & { days: MealPlanDay[] }) | null> {
+    const [plan] = await db.select().from(mealPlans)
+      .where(and(
+        eq(mealPlans.userId, userId),
+        eq(mealPlans.weekStartDate, weekStartDate)
+      ));
+
+    if (!plan) return null;
+
+    const days = await db.select().from(mealPlanDays)
+      .where(eq(mealPlanDays.mealPlanId, plan.id));
+
+    return { ...plan, days };
+  }
+
+  async getAllMealPlans(userId: string): Promise<MealPlan[]> {
+    return db.select().from(mealPlans)
+      .where(eq(mealPlans.userId, userId))
+      .orderBy(desc(mealPlans.weekStartDate));
+  }
+
   async getMealPlanDay(id: number): Promise<MealPlanDay | null> {
     const [day] = await db.select().from(mealPlanDays).where(eq(mealPlanDays.id, id));
     return day || null;
@@ -132,8 +159,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMealPlan(data: InsertMealPlan): Promise<MealPlan> {
-    // Delete old plans first
+    // Delete old plans first (for backward compatibility)
     await this.deleteMealPlan(data.userId);
+    
+    const [plan] = await db.insert(mealPlans).values(data).returning();
+    return plan;
+  }
+
+  async createMealPlanForWeek(data: InsertMealPlan): Promise<MealPlan> {
+    // Delete only the plan for this specific week if it exists
+    const existing = await this.getMealPlanByWeek(data.userId, data.weekStartDate);
+    if (existing) {
+      await this.deleteMealPlanById(existing.id);
+    }
     
     const [plan] = await db.insert(mealPlans).values(data).returning();
     return plan;
@@ -158,6 +196,11 @@ export class DatabaseStorage implements IStorage {
       await db.delete(mealPlanDays).where(eq(mealPlanDays.mealPlanId, plan.id));
     }
     await db.delete(mealPlans).where(eq(mealPlans.userId, userId));
+  }
+
+  async deleteMealPlanById(id: number): Promise<void> {
+    await db.delete(mealPlanDays).where(eq(mealPlanDays.mealPlanId, id));
+    await db.delete(mealPlans).where(eq(mealPlans.id, id));
   }
 
   // =============== RECIPES ===============
@@ -213,6 +256,27 @@ export class DatabaseStorage implements IStorage {
       .where(eq(shoppingListItems.shoppingListId, list.id));
 
     return { ...list, items };
+  }
+
+  async getShoppingListByWeek(userId: string, weekStartDate: string): Promise<(ShoppingList & { items: ShoppingListItem[] }) | null> {
+    const [list] = await db.select().from(shoppingLists)
+      .where(and(
+        eq(shoppingLists.userId, userId),
+        eq(shoppingLists.weekStartDate, weekStartDate)
+      ));
+
+    if (!list) return null;
+
+    const items = await db.select().from(shoppingListItems)
+      .where(eq(shoppingListItems.shoppingListId, list.id));
+
+    return { ...list, items };
+  }
+
+  async getAllShoppingLists(userId: string): Promise<ShoppingList[]> {
+    return db.select().from(shoppingLists)
+      .where(eq(shoppingLists.userId, userId))
+      .orderBy(desc(shoppingLists.createdAt));
   }
 
   async createShoppingList(data: InsertShoppingList): Promise<ShoppingList> {
