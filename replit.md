@@ -49,6 +49,15 @@ Preferred communication style: Simple, everyday language.
 - **Cookbook as RAG Context**: AI chat and meal planning include cookbook recipes (titles + content previews) for consistency
 - **Image Optimization**: Stores generation prompts instead of base64 images; regenerates on-demand to save database space
 
+### Canonical Food Object (CFO) System
+- **Unified Schema**: All food-related data (ingredients, shopping items, recipe components) stored in `food_items` table
+- **Role-Based Storage**: Each food item has a `usageContext.role` (inventory, shopping, planned, ingredient) for proper separation
+- **Uniqueness**: Items identified by `canonicalName + role` to prevent overwrites (e.g., "milk" can exist as both inventory and shopping item)
+- **JSONB Fields**: quantity (amount/unit object), category, attributes, flexibility, usageContext, inventoryState, sourcing, metadata
+- **Categories**: produce, dairy, meat, seafood, pantry, frozen, bakery, beverages, other
+- **Inventory States**: confirmed, likely, unknown, out
+- **Backward Compatibility**: Legacy ingredient_memory and shopping_list_items tables still updated alongside CFO
+
 ### Recent Changes (Jan 2026)
 - Added master cookbook feature for saving and reusing recipes across sessions
 - Image storage migrated from base64 to storing prompts (recipeImagePrompt field)
