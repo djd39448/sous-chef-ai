@@ -73,6 +73,12 @@ Preferred communication style: Simple, everyday language.
 - Added security checks: meal plan day routes verify user ownership via getMealPlanDayWithOwner
 - Fixed SSE streaming parser with buffering to handle chunked network data correctly
 - Enhanced OpenAI prompt to proactively create meal plans when users express preferences in chat
+- **Conversation Management**: Chat now supports multiple conversations with new chat button and history sidebar
+- **Conversation Selection**: Clicking a past conversation loads its full message history
+- **Improved Meal Variety**: Meal plan generation uses temperature 0.9, randomized cuisine styles, and seasonal focus
+- **Week-Specific Plans**: createMealPlanForWeek properly manages individual weeks without affecting other plans
+- **Shopping List by Week**: Calendar month view shows "View List" button for weeks with shopping lists
+- **On-Demand Cookbook Images**: Cookbook recipe images only generate when user explicitly taps "generate photo"
 
 ### Authentication Flow
 - Replit Auth handles user authentication via OIDC
