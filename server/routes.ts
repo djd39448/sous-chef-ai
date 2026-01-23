@@ -303,6 +303,9 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
+      // Accept weekStartDate from request body for creating future/past week plans
+      const targetWeekStartDate = req.body.weekStartDate || getWeekStartDate();
+
       const ingredients = await storage.getIngredients(userId);
       const ingredientList = ingredients.map(i => i.name).join(", ") || "common pantry items";
 
@@ -316,11 +319,28 @@ export async function registerRoutes(
         messages: [
           {
             role: "system",
-            content: `You are a helpful meal planning assistant. Generate a diverse, family-friendly weekly dinner plan. Use the ingredients provided when possible. ${cookbookContext}`
+            content: `You are a helpful meal planning assistant. Generate a diverse, family-friendly weekly dinner plan. Use the ingredients provided when possible. ${cookbookContext}
+            
+IMPORTANT: You MUST respond with valid JSON containing a "meals" array.`
           },
           {
             role: "user",
-            content: `Create a weekly dinner plan (Monday through Sunday). Available ingredients: ${ingredientList}. Return ONLY a JSON array with format: [{"dayOfWeek": 1, "mealName": "...", "notes": "..."}] where dayOfWeek is 0=Sunday, 1=Monday, etc.`
+            content: `Create a weekly dinner plan (Monday through Sunday). Available ingredients: ${ingredientList}. 
+
+Return JSON in this exact format:
+{
+  "meals": [
+    {"dayOfWeek": 1, "mealName": "Monday meal name", "notes": "cooking time"},
+    {"dayOfWeek": 2, "mealName": "Tuesday meal name", "notes": "cooking time"},
+    {"dayOfWeek": 3, "mealName": "Wednesday meal name", "notes": "cooking time"},
+    {"dayOfWeek": 4, "mealName": "Thursday meal name", "notes": "cooking time"},
+    {"dayOfWeek": 5, "mealName": "Friday meal name", "notes": "cooking time"},
+    {"dayOfWeek": 6, "mealName": "Saturday meal name", "notes": "cooking time"},
+    {"dayOfWeek": 0, "mealName": "Sunday meal name", "notes": "cooking time"}
+  ]
+}
+
+Where dayOfWeek is: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday`
           }
         ],
         response_format: { type: "json_object" },
@@ -328,30 +348,49 @@ export async function registerRoutes(
       });
 
       const content = response.choices[0]?.message?.content || "{}";
-      let meals;
+      let meals: { dayOfWeek: number; mealName: string; notes?: string }[] = [];
       try {
         const parsed = JSON.parse(content);
-        meals = parsed.meals || parsed;
-      } catch {
+        // Handle various possible response formats
+        if (Array.isArray(parsed)) {
+          meals = parsed;
+        } else if (parsed.meals && Array.isArray(parsed.meals)) {
+          meals = parsed.meals;
+        } else if (parsed.mealPlan && Array.isArray(parsed.mealPlan)) {
+          meals = parsed.mealPlan;
+        } else if (parsed.plan && Array.isArray(parsed.plan)) {
+          meals = parsed.plan;
+        }
+      } catch (e) {
+        console.error("Failed to parse meal plan response:", e, content);
         meals = [];
       }
 
-      if (!Array.isArray(meals) || meals.length === 0) {
-        // Default plan
-        meals = [
-          { dayOfWeek: 1, mealName: "Grilled Chicken with Roasted Vegetables", notes: "30 min" },
-          { dayOfWeek: 2, mealName: "Pasta with Marinara Sauce", notes: "20 min" },
-          { dayOfWeek: 3, mealName: "Beef Stir-Fry with Rice", notes: "25 min" },
-          { dayOfWeek: 4, mealName: "Fish Tacos with Coleslaw", notes: "25 min" },
-          { dayOfWeek: 5, mealName: "Homemade Pizza Night", notes: "45 min" },
-          { dayOfWeek: 6, mealName: "BBQ Pulled Pork Sandwiches", notes: "Slow cooker" },
-          { dayOfWeek: 0, mealName: "Roast Chicken with Mashed Potatoes", notes: "1 hour" },
+      // Validate meals have required fields
+      meals = meals.filter(m => typeof m.dayOfWeek === 'number' && typeof m.mealName === 'string');
+
+      if (meals.length === 0) {
+        // Generate variety with random selection instead of always the same meals
+        const mealOptions = [
+          ["Grilled Chicken Salad", "Honey Garlic Chicken", "Lemon Herb Roasted Chicken", "Chicken Stir-Fry"],
+          ["Spaghetti Carbonara", "Pasta Primavera", "Creamy Mushroom Pasta", "Penne Arrabiata"],
+          ["Beef Tacos", "Beef Stir-Fry with Broccoli", "Shepherd's Pie", "Beef and Vegetable Soup"],
+          ["Grilled Salmon", "Fish Tacos", "Baked Cod with Lemon", "Shrimp Scampi"],
+          ["Homemade Pizza", "Veggie Burgers", "Loaded Nachos", "Quesadillas"],
+          ["BBQ Ribs", "Pulled Pork Sandwiches", "Slow Cooker Pot Roast", "Grilled Steak"],
+          ["Sunday Roast Chicken", "Lasagna", "Baked Ham", "Roast Beef with Vegetables"],
         ];
+        const notes = ["25 min", "30 min", "35 min", "40 min", "45 min", "1 hour", "Slow cooker"];
+        meals = [1, 2, 3, 4, 5, 6, 0].map((day, idx) => ({
+          dayOfWeek: day,
+          mealName: mealOptions[idx][Math.floor(Math.random() * mealOptions[idx].length)],
+          notes: notes[idx],
+        }));
       }
 
       const plan = await storage.createMealPlan({
         userId,
-        weekStartDate: getWeekStartDate(),
+        weekStartDate: targetWeekStartDate,
       });
 
       for (const meal of meals) {
@@ -363,7 +402,8 @@ export async function registerRoutes(
         });
       }
 
-      const fullPlan = await storage.getMealPlan(userId);
+      // Return the newly created plan for the target week
+      const fullPlan = await storage.getMealPlanByWeek(userId, targetWeekStartDate);
       res.json(fullPlan);
     } catch (error) {
       console.error("Error generating meal plan:", error);
