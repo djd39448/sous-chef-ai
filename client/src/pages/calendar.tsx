@@ -120,6 +120,7 @@ export default function Calendar() {
   });
 
   const weeksWithPlans = new Set(calendarData?.mealPlans?.map(p => p.weekStartDate) || []);
+  const weeksWithLists = new Set(calendarData?.shoppingLists?.map(l => l.weekStartDate).filter((d): d is string => d !== null) || []);
   
   const navigateWeek = (direction: "prev" | "next") => {
     if (direction === "prev") {
@@ -253,7 +254,9 @@ export default function Calendar() {
               currentMonth={currentMonth}
               weeks={getMonthWeeks()}
               weeksWithPlans={weeksWithPlans}
+              weeksWithLists={weeksWithLists}
               onSelectWeek={selectWeek}
+              onViewList={(weekDateStr) => navigate(`/shopping?week=${weekDateStr}`)}
               onCreatePlan={(weekStart) => generateMutation.mutate(getWeekStartDate(weekStart))}
               isGenerating={generateMutation.isPending}
             />
@@ -295,12 +298,14 @@ interface MonthViewProps {
   currentMonth: Date;
   weeks: Date[];
   weeksWithPlans: Set<string>;
+  weeksWithLists: Set<string>;
   onSelectWeek: (weekStart: Date) => void;
+  onViewList: (weekStartDate: string) => void;
   onCreatePlan: (weekStart: Date) => void;
   isGenerating: boolean;
 }
 
-function MonthView({ currentMonth, weeks, weeksWithPlans, onSelectWeek, onCreatePlan, isGenerating }: MonthViewProps) {
+function MonthView({ currentMonth, weeks, weeksWithPlans, weeksWithLists, onSelectWeek, onViewList, onCreatePlan, isGenerating }: MonthViewProps) {
   const today = new Date();
   
   return (
@@ -314,6 +319,7 @@ function MonthView({ currentMonth, weeks, weeksWithPlans, onSelectWeek, onCreate
       {weeks.map((weekStart) => {
         const weekDateStr = getWeekStartDate(weekStart);
         const hasPlan = weeksWithPlans.has(weekDateStr);
+        const hasList = weeksWithLists.has(weekDateStr);
         const isThisWeek = isSameWeek(weekStart, today, { weekStartsOn: 1 });
         
         return (
@@ -362,25 +368,38 @@ function MonthView({ currentMonth, weeks, weeksWithPlans, onSelectWeek, onCreate
               <span className="text-xs text-muted-foreground">
                 Week of {format(weekStart, "MMM d")}
               </span>
-              {hasPlan ? (
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={(e) => { e.stopPropagation(); onSelectWeek(weekStart); }}
-                >
-                  View Plan
-                </Button>
-              ) : (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={(e) => { e.stopPropagation(); onCreatePlan(weekStart); }}
-                  disabled={isGenerating}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Create
-                </Button>
-              )}
+              <div className="flex gap-2">
+                {hasList && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); onViewList(weekDateStr); }}
+                    data-testid={`view-list-${weekDateStr}`}
+                  >
+                    View List
+                  </Button>
+                )}
+                {hasPlan ? (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); onSelectWeek(weekStart); }}
+                    data-testid={`view-plan-${weekDateStr}`}
+                  >
+                    View Plan
+                  </Button>
+                ) : (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); onCreatePlan(weekStart); }}
+                    disabled={isGenerating}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Create
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         );

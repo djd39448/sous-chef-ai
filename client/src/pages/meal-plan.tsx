@@ -238,17 +238,15 @@ export default function MealPlan() {
                   ))}
                 </div>
 
-                {isCurrentWeek && (
-                  <Button
-                    className="w-full"
-                    onClick={() => generateShoppingListMutation.mutate()}
-                    disabled={generateShoppingListMutation.isPending}
-                    data-testid="button-generate-shopping-list"
-                  >
-                    <ShoppingCart className="h-4 w-4 mr-2" />
-                    Generate Shopping List
-                  </Button>
-                )}
+                <Button
+                  className="w-full"
+                  onClick={() => generateShoppingListMutation.mutate()}
+                  disabled={generateShoppingListMutation.isPending}
+                  data-testid="button-generate-shopping-list"
+                >
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  {generateShoppingListMutation.isPending ? "Creating..." : "Add To Shopping List"}
+                </Button>
               </>
             )}
           </div>

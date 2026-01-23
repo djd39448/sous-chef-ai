@@ -3,14 +3,16 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { Header } from "@/components/header";
 import { BottomNav } from "@/components/bottom-nav";
 import { ChatInput } from "@/components/chat-input";
 import { ChatMessage, TypingIndicator } from "@/components/chat-message";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChefHat } from "lucide-react";
-import type { KitchenMessage } from "@shared/schema";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { ChefHat, Plus, History, MessageSquare } from "lucide-react";
+import type { KitchenMessage, KitchenConversation } from "@shared/schema";
+import { format, parseISO } from "date-fns";
 
 interface ConversationWithMessages {
   id: number;
@@ -24,20 +26,63 @@ export default function Chat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
+
+  const conversationQueryKey = activeConversationId 
+    ? ["/api/kitchen/conversation", activeConversationId]
+    : ["/api/kitchen/conversation"];
 
   const { data: conversation, isLoading } = useQuery<ConversationWithMessages>({
-    queryKey: ["/api/kitchen/conversation"],
+    queryKey: conversationQueryKey,
+    queryFn: async () => {
+      const url = activeConversationId 
+        ? `/api/kitchen/conversation/${activeConversationId}`
+        : "/api/kitchen/conversation";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch conversation");
+      return res.json();
+    },
   });
+
+  useEffect(() => {
+    if (conversation && !activeConversationId) {
+      setActiveConversationId(conversation.id);
+    }
+  }, [conversation, activeConversationId]);
+
+  const { data: allConversations } = useQuery<KitchenConversation[]>({
+    queryKey: ["/api/kitchen/conversations"],
+  });
+
+  const newChatMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/kitchen/conversation/new");
+      return res.json();
+    },
+    onSuccess: (newConversation) => {
+      setActiveConversationId(newConversation.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/conversations"] });
+      setSheetOpen(false);
+    },
+  });
+
+  const selectConversation = (convId: number) => {
+    setActiveConversationId(convId);
+    setSheetOpen(false);
+  };
 
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
+      if (!conversation) throw new Error("No active conversation");
+      
       setIsStreaming(true);
       setStreamingContent("");
 
       const response = await fetch("/api/kitchen/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, conversationId: conversation.id }),
         credentials: "include",
       });
 
@@ -50,13 +95,15 @@ export default function Chat() {
 
       const decoder = new TextDecoder();
       let fullContent = "";
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
@@ -71,7 +118,6 @@ export default function Chat() {
               setIsStreaming(false);
             }
           } catch {
-            // Ignore parse errors
           }
         }
       }
@@ -79,7 +125,8 @@ export default function Chat() {
       return fullContent;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/conversation"] });
+      queryClient.invalidateQueries({ queryKey: conversationQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/conversations"] });
       setStreamingContent("");
     },
     onError: () => {
@@ -99,7 +146,66 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <Header user={user} title="Sous Chef" />
+      <header className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10">
+        <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+          <ChefHat className="h-5 w-5 text-primary-foreground" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg font-semibold" data-testid="chat-title">Sous Chef</h1>
+          <p className="text-xs text-muted-foreground truncate">
+            {conversation?.title || "Your kitchen assistant"}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => newChatMutation.mutate()}
+          disabled={newChatMutation.isPending}
+          data-testid="button-new-chat"
+        >
+          <Plus className="h-5 w-5" />
+        </Button>
+        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" data-testid="button-history">
+              <History className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>Past Conversations</SheetTitle>
+            </SheetHeader>
+            <div className="mt-4 space-y-2">
+              {allConversations && allConversations.length > 0 ? (
+                allConversations.map((conv) => (
+                  <button
+                    key={conv.id}
+                    className={`w-full text-left p-3 rounded-lg cursor-pointer hover-elevate ${
+                      conv.id === conversation?.id ? 'bg-primary/10' : 'bg-muted/50'
+                    }`}
+                    onClick={() => selectConversation(conv.id)}
+                    data-testid={`conversation-${conv.id}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{conv.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(parseISO(conv.updatedAt as unknown as string), "MMM d, yyyy 'at' h:mm a")}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <p className="text-muted-foreground text-sm text-center py-8">
+                  No past conversations yet
+                </p>
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </header>
 
       <div className="flex-1 overflow-hidden pb-16">
         <ScrollArea className="h-full" ref={scrollRef}>

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChefHat, Trash2, RefreshCw, BookOpen, Search, X } from "lucide-react";
+import { ChefHat, Trash2, RefreshCw, BookOpen, Search, X, Camera } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
@@ -75,9 +75,6 @@ export default function Cookbook() {
       setExpandedRecipe(null);
     } else {
       setExpandedRecipe(recipe.id);
-      if (recipe.imagePrompt && !recipeImages[recipe.id]) {
-        loadImage(recipe);
-      }
     }
   };
 
@@ -178,9 +175,16 @@ export default function Cookbook() {
                               data-testid={`recipe-image-${recipe.id}`}
                             />
                           ) : (
-                            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                              <ChefHat className="h-12 w-12" />
-                            </div>
+                            <button
+                              onClick={() => loadImage(recipe)}
+                              className="absolute inset-0 flex items-center justify-center text-muted-foreground hover-elevate cursor-pointer w-full h-full"
+                              data-testid={`generate-image-${recipe.id}`}
+                            >
+                              <div className="flex flex-col items-center gap-2">
+                                <Camera className="h-8 w-8" />
+                                <span className="text-sm font-medium">Tap to generate photo</span>
+                              </div>
+                            </button>
                           )}
                         </div>
                       )}

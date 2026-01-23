@@ -55,6 +55,8 @@ export interface IStorage {
 
   // Kitchen Conversations
   getOrCreateConversation(userId: string): Promise<KitchenConversation & { messages: KitchenMessage[] }>;
+  getAllConversations(userId: string): Promise<KitchenConversation[]>;
+  createNewConversation(userId: string, title?: string): Promise<KitchenConversation>;
   addMessage(data: InsertKitchenMessage): Promise<KitchenMessage>;
   getMessages(conversationId: number): Promise<KitchenMessage[]>;
 
@@ -361,6 +363,33 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(kitchenMessages)
       .where(eq(kitchenMessages.conversationId, conversationId))
       .orderBy(kitchenMessages.createdAt);
+  }
+
+  async getAllConversations(userId: string): Promise<KitchenConversation[]> {
+    return db.select().from(kitchenConversations)
+      .where(eq(kitchenConversations.userId, userId))
+      .orderBy(desc(kitchenConversations.updatedAt));
+  }
+
+  async createNewConversation(userId: string, title?: string): Promise<KitchenConversation> {
+    const [conversation] = await db.insert(kitchenConversations)
+      .values({ userId, title: title || "New Chat" })
+      .returning();
+    return conversation;
+  }
+
+  async getConversationById(conversationId: number, userId: string): Promise<(KitchenConversation & { messages: KitchenMessage[] }) | null> {
+    const [conversation] = await db.select().from(kitchenConversations)
+      .where(and(
+        eq(kitchenConversations.id, conversationId),
+        eq(kitchenConversations.userId, userId)
+      ))
+      .limit(1);
+
+    if (!conversation) return null;
+
+    const messages = await this.getMessages(conversation.id);
+    return { ...conversation, messages };
   }
 
   // =============== CANONICAL FOOD OBJECTS (CFO) ===============

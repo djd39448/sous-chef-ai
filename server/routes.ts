@@ -26,16 +26,67 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/kitchen/conversations", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const conversations = await storage.getAllConversations(userId);
+      res.json(conversations);
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+      res.status(500).json({ error: "Failed to fetch conversations" });
+    }
+  });
+
+  app.post("/api/kitchen/conversation/new", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const conversation = await storage.createNewConversation(userId, "Kitchen Chat");
+      res.json(conversation);
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+      res.status(500).json({ error: "Failed to create conversation" });
+    }
+  });
+
+  app.get("/api/kitchen/conversation/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const conversationId = parseInt(req.params.id);
+      if (isNaN(conversationId)) return res.status(400).json({ error: "Invalid conversation ID" });
+
+      const conversation = await storage.getConversationById(conversationId, userId);
+      if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+
+      res.json(conversation);
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      res.status(500).json({ error: "Failed to fetch conversation" });
+    }
+  });
+
   app.post("/api/kitchen/message", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = (req.user as any)?.claims?.sub;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const { content } = req.body;
+      const { content, conversationId } = req.body;
       if (!content) return res.status(400).json({ error: "Message content required" });
 
-      // Get or create conversation
-      const conversation = await storage.getOrCreateConversation(userId);
+      // Get the specified conversation or fallback to default
+      let conversation;
+      if (conversationId) {
+        const specificConv = await storage.getConversationById(conversationId, userId);
+        if (!specificConv) return res.status(404).json({ error: "Conversation not found" });
+        conversation = specificConv;
+      } else {
+        conversation = await storage.getOrCreateConversation(userId);
+      }
 
       // Save user message
       await storage.addMessage({
@@ -314,18 +365,25 @@ export async function registerRoutes(
         ? `User's saved cookbook recipes (prefer these for consistency): ${cookbookRecipes.slice(0, 20).map(r => r.title).join(", ")}.` 
         : "";
 
+      const cuisineStyles = ["Italian", "Mexican", "Asian", "American comfort", "Mediterranean", "Southern", "Tex-Mex", "Greek", "Indian-inspired", "French bistro"];
+      const randomCuisine = cuisineStyles[Math.floor(Math.random() * cuisineStyles.length)];
+      const seasonalFocus = new Date().getMonth() >= 9 || new Date().getMonth() <= 2 ? "hearty, warming" : "fresh, lighter";
+      
       const response = await openai.chat.completions.create({
         model: "gpt-4.1",
+        temperature: 0.9,
         messages: [
           {
             role: "system",
-            content: `You are a helpful meal planning assistant. Generate a diverse, family-friendly weekly dinner plan. Use the ingredients provided when possible. ${cookbookContext}
+            content: `You are a creative meal planning assistant. Generate a diverse, family-friendly weekly dinner plan. Be creative and suggest different meals each time! ${cookbookContext}
             
 IMPORTANT: You MUST respond with valid JSON containing a "meals" array.`
           },
           {
             role: "user",
-            content: `Create a weekly dinner plan (Monday through Sunday). Available ingredients: ${ingredientList}. 
+            content: `Create a UNIQUE weekly dinner plan (Monday through Sunday). This week, lean toward ${randomCuisine} influences with ${seasonalFocus} dishes. Available ingredients: ${ingredientList}. 
+
+Be creative! Suggest interesting, varied meals - not the same standard options every time. Mix cuisines and try new flavor combinations.
 
 Return JSON in this exact format:
 {
@@ -388,7 +446,7 @@ Where dayOfWeek is: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Fr
         }));
       }
 
-      const plan = await storage.createMealPlan({
+      const plan = await storage.createMealPlanForWeek({
         userId,
         weekStartDate: targetWeekStartDate,
       });
@@ -574,6 +632,8 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
         stream: true,
       });
 
+      let toolCallArgs: Record<number, { name: string; args: string }> = {};
+
       for await (const chunk of response) {
         const delta = chunk.choices[0]?.delta;
         
@@ -584,17 +644,32 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
 
         if (delta?.tool_calls) {
           for (const tc of delta.tool_calls) {
-            if (tc.function?.name === "update_meal") {
-              try {
-                const argsStr = tc.function.arguments || "";
-                const args = JSON.parse(argsStr);
-                await storage.updateMealPlanDay(dayId, {
-                  mealName: args.mealName,
-                  notes: args.notes || null,
-                });
-                updatedMeal = { mealName: args.mealName, notes: args.notes };
-              } catch {}
+            const idx = tc.index ?? 0;
+            if (tc.function?.name) {
+              toolCallArgs[idx] = { name: tc.function.name, args: "" };
             }
+            if (tc.function?.arguments && toolCallArgs[idx]) {
+              toolCallArgs[idx].args += tc.function.arguments;
+            }
+          }
+        }
+      }
+
+      for (const tc of Object.values(toolCallArgs)) {
+        if (tc.name === "update_meal" && tc.args) {
+          try {
+            const args = JSON.parse(tc.args);
+            if (args.mealName) {
+              await storage.updateMealPlanDay(dayId, {
+                mealName: args.mealName,
+                notes: args.notes || null,
+                recipeContent: null,
+                recipeImagePrompt: null,
+              });
+              updatedMeal = { mealName: args.mealName, notes: args.notes };
+            }
+          } catch (e) {
+            console.error("Failed to parse tool call:", e);
           }
         }
       }
@@ -619,6 +694,33 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const shoppingList = await storage.getShoppingList(userId);
+      res.json(shoppingList);
+    } catch (error) {
+      console.error("Error fetching shopping list:", error);
+      res.status(500).json({ error: "Failed to fetch shopping list" });
+    }
+  });
+
+  app.get("/api/kitchen/shopping-lists", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const lists = await storage.getAllShoppingLists(userId);
+      res.json(lists);
+    } catch (error) {
+      console.error("Error fetching shopping lists:", error);
+      res.status(500).json({ error: "Failed to fetch shopping lists" });
+    }
+  });
+
+  app.get("/api/kitchen/shopping-list/:weekStartDate", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const weekStartDate = req.params.weekStartDate as string;
+      const shoppingList = await storage.getShoppingListByWeek(userId, weekStartDate);
       res.json(shoppingList);
     } catch (error) {
       console.error("Error fetching shopping list:", error);
