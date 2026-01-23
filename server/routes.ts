@@ -64,23 +64,69 @@ export async function registerRoutes(
 
       let fullResponse = "";
 
-      // Handle tool calls
+      // Handle tool calls - using CFO format
       const handleToolCall = async (name: string, args: unknown): Promise<string> => {
         try {
           if (name === "update_ingredients") {
-            const { ingredients: updates } = args as { ingredients: Array<{ name: string; quantity?: string; action: string }> };
+            interface CFOIngredientUpdate {
+              canonical_name: string;
+              display_name?: string;
+              quantity?: { amount: number; unit: string };
+              category: string;
+              status?: string;
+              action: string;
+            }
+            const { ingredients: updates } = args as { ingredients: CFOIngredientUpdate[] };
+            
             for (const update of updates) {
               if (update.action === "add") {
+                // Create CFO for inventory
+                await storage.upsertFoodItem({
+                  userId,
+                  canonicalName: update.canonical_name.toLowerCase(),
+                  displayName: update.display_name || update.canonical_name,
+                  quantity: update.quantity || null,
+                  category: { primary: update.category as any, secondary: undefined },
+                  usageContext: {
+                    role: "inventory",
+                    required: false,
+                    recipe_ids: [],
+                  },
+                  inventoryState: {
+                    status: (update.status || "confirmed") as any,
+                    on_hand_amount: update.quantity?.amount || null,
+                    last_confirmed: new Date().toISOString(),
+                  },
+                  metadata: {
+                    created_by: "ai",
+                    confidence: update.status === "confirmed" ? 1.0 : 0.8,
+                  },
+                });
+                
+                // Also update legacy ingredient memory for backward compatibility
                 await storage.upsertIngredient({
                   userId,
-                  name: update.name,
-                  quantity: update.quantity || null,
-                  confidence: 1.0,
+                  name: update.canonical_name,
+                  quantity: update.quantity ? `${update.quantity.amount} ${update.quantity.unit}` : null,
+                  confidence: update.status === "confirmed" ? 1.0 : 0.8,
                   lastMentioned: new Date(),
                 });
               } else if (update.action === "remove") {
+                // Mark as out in CFO - specifically for inventory role
+                const existing = await storage.getFoodItemByCanonicalNameAndRole(userId, update.canonical_name, "inventory");
+                if (existing) {
+                  await storage.updateFoodItem(existing.id, {
+                    inventoryState: {
+                      status: "out",
+                      on_hand_amount: 0,
+                      last_confirmed: new Date().toISOString(),
+                    },
+                  });
+                }
+                
+                // Also remove from legacy ingredient memory
                 const userIngredients = await storage.getIngredients(userId);
-                const toRemove = userIngredients.find(i => i.name.toLowerCase() === update.name.toLowerCase());
+                const toRemove = userIngredients.find(i => i.name.toLowerCase() === update.canonical_name.toLowerCase());
                 if (toRemove) {
                   await storage.deleteIngredient(toRemove.id);
                 }
@@ -91,7 +137,7 @@ export async function registerRoutes(
 
           if (name === "create_meal_plan") {
             const { meals } = args as { meals: Array<{ dayOfWeek: number; mealName: string; notes?: string }> };
-            const plan = await storage.createMealPlan({
+            const plan = await storage.createMealPlanForWeek({
               userId,
               weekStartDate: getWeekStartDate(),
             });
@@ -107,16 +153,61 @@ export async function registerRoutes(
           }
 
           if (name === "create_shopping_list") {
-            const { items } = args as { items: Array<{ name: string; quantity?: string; category: string }> };
+            interface CFOShoppingItem {
+              canonical_name: string;
+              display_name?: string;
+              quantity?: { amount: number; unit: string };
+              category: string;
+              substitution_allowed?: boolean;
+              generic_ok?: boolean;
+            }
+            const { items } = args as { items: CFOShoppingItem[] };
+            
+            const weekStartDate = getWeekStartDate();
+            const mealPlan = await storage.getMealPlanByWeek(userId, weekStartDate);
+            
             const list = await storage.createShoppingList({
               userId,
               name: "Shopping List",
+              weekStartDate,
+              mealPlanId: mealPlan?.id || null,
             });
+            
             for (const item of items) {
+              // Create CFO for shopping
+              await storage.upsertFoodItem({
+                userId,
+                canonicalName: item.canonical_name.toLowerCase(),
+                displayName: item.display_name || item.canonical_name,
+                quantity: item.quantity || null,
+                category: { primary: item.category as any, secondary: undefined },
+                flexibility: {
+                  substitution_allowed: item.substitution_allowed !== false,
+                  acceptable_variants: [],
+                  strict: false,
+                },
+                usageContext: {
+                  role: "shopping",
+                  required: true,
+                  recipe_ids: [],
+                  shopping_list_id: list.id,
+                },
+                sourcing: {
+                  store_affinity: null,
+                  bulk_allowed: true,
+                  generic_ok: item.generic_ok !== false,
+                },
+                metadata: {
+                  created_by: "ai",
+                  confidence: 0.9,
+                },
+              });
+              
+              // Also add to legacy shopping list for backward compatibility
               await storage.addShoppingListItem({
                 shoppingListId: list.id,
-                name: item.name,
-                quantity: item.quantity || null,
+                name: item.display_name || item.canonical_name,
+                quantity: item.quantity ? `${item.quantity.amount} ${item.quantity.unit}` : null,
                 category: item.category,
                 checked: 0,
               });

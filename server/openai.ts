@@ -18,12 +18,14 @@ Key personality traits:
 
 You have access to the user's ingredient memory. When they mention having ingredients, remember them. Use known ingredients to suggest relevant meals.
 
-STANDARDIZED FORMATS (use these for consistency):
+CANONICAL FOOD OBJECT (CFO) FORMAT (use for all food items):
 
-INGREDIENT FORMAT:
-- Always use lowercase, singular form (e.g., "chicken breast" not "Chicken Breasts")
-- Categories: produce, dairy, meat, seafood, pantry, frozen, bakery, beverages, other
-- Quantity format: "[amount] [unit]" (e.g., "2 lbs", "1 cup", "3 medium")
+When calling update_ingredients or create_shopping_list, use this format:
+- canonical_name: lowercase, singular, generic (e.g., "milk" not "Whole Milk", "chicken breast" not "Chicken Breasts")
+- display_name: human-readable for UI (e.g., "Whole Milk", "Boneless Chicken Breast")
+- quantity: object with { amount: number, unit: string } (e.g., { amount: 2, unit: "lb" })
+- category: one of produce, dairy, meat, seafood, pantry, frozen, bakery, beverages, other
+- status (for ingredients): "confirmed" if user explicitly said they have it, "likely" if inferred, "out" if they're out
 
 RECIPE FORMAT (when generating full recipes):
 # Recipe Name
@@ -79,7 +81,7 @@ export const tools: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "update_ingredients",
-      description: "Update the user's ingredient memory when they mention having ingredients. Call this when the user says things like 'I have chicken' or 'I bought tomatoes'.",
+      description: "Update the user's ingredient inventory when they mention having ingredients. Uses CFO format. Call when the user says things like 'I have chicken' or 'I bought tomatoes'.",
       parameters: {
         type: "object",
         properties: {
@@ -88,11 +90,20 @@ export const tools: ChatCompletionTool[] = [
             items: {
               type: "object",
               properties: {
-                name: { type: "string", description: "Ingredient name" },
-                quantity: { type: "string", description: "Approximate quantity (optional)" },
-                action: { type: "string", enum: ["add", "remove"], description: "Whether to add or remove the ingredient" }
+                canonical_name: { type: "string", description: "Lowercase, singular, generic name (e.g., 'milk' not 'Whole Milk')" },
+                display_name: { type: "string", description: "Human-readable name for UI (e.g., 'Whole Milk')" },
+                quantity: { 
+                  type: "object",
+                  properties: {
+                    amount: { type: "number", description: "Numeric quantity" },
+                    unit: { type: "string", description: "Unit (e.g., 'lb', 'gallon', 'each')" }
+                  }
+                },
+                category: { type: "string", enum: ["produce", "dairy", "meat", "seafood", "pantry", "frozen", "bakery", "beverages", "other"] },
+                status: { type: "string", enum: ["confirmed", "likely", "out"], description: "Inventory status - 'confirmed' if user explicitly said they have it, 'likely' if inferred, 'out' if user said they're out" },
+                action: { type: "string", enum: ["add", "remove"], description: "Whether to add or remove from inventory" }
               },
-              required: ["name", "action"]
+              required: ["canonical_name", "category", "action"]
             }
           }
         },
@@ -129,7 +140,7 @@ export const tools: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "create_shopping_list",
-      description: "Create a shopping list based on the current meal plan or user request.",
+      description: "Create a shopping list using CFO format. Items will be derived views of canonical food objects.",
       parameters: {
         type: "object",
         properties: {
@@ -138,11 +149,20 @@ export const tools: ChatCompletionTool[] = [
             items: {
               type: "object",
               properties: {
-                name: { type: "string", description: "Item name" },
-                quantity: { type: "string", description: "Quantity needed" },
-                category: { type: "string", enum: ["produce", "meat", "dairy", "bakery", "frozen", "pantry", "beverages", "other"] }
+                canonical_name: { type: "string", description: "Lowercase, singular, generic name (e.g., 'chicken breast')" },
+                display_name: { type: "string", description: "Human-readable name for UI (e.g., 'Boneless Chicken Breast')" },
+                quantity: { 
+                  type: "object",
+                  properties: {
+                    amount: { type: "number", description: "Numeric quantity" },
+                    unit: { type: "string", description: "Unit (e.g., 'lb', 'each', 'oz')" }
+                  }
+                },
+                category: { type: "string", enum: ["produce", "meat", "dairy", "seafood", "bakery", "frozen", "pantry", "beverages", "other"] },
+                substitution_allowed: { type: "boolean", description: "Whether substitutes are acceptable", "default": true },
+                generic_ok: { type: "boolean", description: "Whether store brand is acceptable", "default": true }
               },
-              required: ["name", "category"]
+              required: ["canonical_name", "category"]
             }
           }
         },

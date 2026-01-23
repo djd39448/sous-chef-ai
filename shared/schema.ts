@@ -7,14 +7,16 @@ import { z } from "zod";
 export * from "./models/auth";
 export * from "./models/chat";
 
-// ============= STANDARDIZED FORMATS =============
-// These formats ensure consistency across the app and efficient AI context
+// ============= CANONICAL FOOD OBJECT (CFO) =============
+// Single, immutable object schema for all food-related data
+// Used consistently across recipes, meal planning, inventory, and shopping lists
+// Lists, plans, and exports are VIEWS, not separate data models
 
 /**
  * INGREDIENT FORMAT:
- * - Lowercase, singular form (e.g., "chicken breast" not "Chicken Breasts")
- * - Standard categories: produce, dairy, meat, seafood, pantry, frozen, bakery, other
- * - Quantity format: "[amount] [unit]" (e.g., "2 lbs", "1 cup", "3 medium")
+ * - canonical_name: lowercase, singular, generic (e.g., "milk" not "Whole Milk")
+ * - display_name: human-readable for UI (e.g., "Whole Milk")
+ * - Standard categories: produce, dairy, meat, seafood, pantry, frozen, bakery, beverages, other
  * 
  * RECIPE FORMAT (Markdown):
  * # Recipe Name
@@ -46,6 +48,100 @@ export const INGREDIENT_CATEGORIES = [
 ] as const;
 
 export type IngredientCategory = typeof INGREDIENT_CATEGORIES[number];
+
+export const FOOD_ITEM_ROLES = ["ingredient", "planned", "inventory", "shopping"] as const;
+export type FoodItemRole = typeof FOOD_ITEM_ROLES[number];
+
+export const INVENTORY_STATUSES = ["confirmed", "likely", "unknown", "out"] as const;
+export type InventoryStatus = typeof INVENTORY_STATUSES[number];
+
+// TypeScript interfaces for JSONB fields
+export interface FoodQuantity {
+  amount: number;
+  unit: string;
+}
+
+export interface FoodCategory {
+  primary: IngredientCategory;
+  secondary?: string;
+}
+
+export interface FoodAttributes {
+  [key: string]: string | boolean | number | null;
+}
+
+export interface FoodFlexibility {
+  substitution_allowed: boolean;
+  acceptable_variants: string[];
+  strict: boolean;
+}
+
+export interface FoodUsageContext {
+  role: FoodItemRole;
+  required: boolean;
+  recipe_ids: number[];
+  meal_plan_id?: number;
+  shopping_list_id?: number;
+}
+
+export interface FoodInventoryState {
+  status: InventoryStatus;
+  on_hand_amount: number | null;
+  last_confirmed: string | null;
+}
+
+export interface FoodSourcing {
+  store_affinity: string | null;
+  bulk_allowed: boolean;
+  generic_ok: boolean;
+}
+
+export interface FoodMetadata {
+  created_by: "ai" | "user";
+  confidence: number;
+}
+
+// ============= CANONICAL FOOD ITEMS =============
+export const foodItems = pgTable("food_items", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  
+  canonicalName: text("canonical_name").notNull(),
+  displayName: text("display_name").notNull(),
+  
+  quantity: jsonb("quantity").$type<FoodQuantity>(),
+  category: jsonb("category").$type<FoodCategory>().notNull(),
+  attributes: jsonb("attributes").$type<FoodAttributes>().default({}),
+  flexibility: jsonb("flexibility").$type<FoodFlexibility>().default({
+    substitution_allowed: true,
+    acceptable_variants: [],
+    strict: false
+  }),
+  usageContext: jsonb("usage_context").$type<FoodUsageContext>().notNull(),
+  inventoryState: jsonb("inventory_state").$type<FoodInventoryState>().default({
+    status: "unknown",
+    on_hand_amount: null,
+    last_confirmed: null
+  }),
+  sourcing: jsonb("sourcing").$type<FoodSourcing>().default({
+    store_affinity: null,
+    bulk_allowed: true,
+    generic_ok: true
+  }),
+  metadata: jsonb("metadata").$type<FoodMetadata>().notNull(),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFoodItemSchema = createInsertSchema(foodItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type FoodItem = typeof foodItems.$inferSelect;
+export type InsertFoodItem = z.infer<typeof insertFoodItemSchema>;
 
 // ============= INGREDIENT MEMORY =============
 export const ingredientMemory = pgTable("ingredient_memory", {

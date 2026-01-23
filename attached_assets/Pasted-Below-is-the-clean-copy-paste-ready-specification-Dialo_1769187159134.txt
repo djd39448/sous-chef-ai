@@ -1,0 +1,243 @@
+Below is the **clean, copy-paste-ready specification**.
+Dialogue, commentary, and mentor notes removed.
+This is written exactly how a Replit agent or engineer should consume it.
+
+---
+
+# Canonical Food Object (CFO) Specification
+
+## Purpose
+
+Define a **single, immutable object schema** that is used consistently across:
+
+* Recipes
+* Meal planning
+* Inventory inference
+* Shopping lists
+* Store-formatted exports
+
+The object **must not change shape** as it moves through the system.
+Only values may update.
+
+Lists, plans, and exports are **views**, not separate data models.
+
+---
+
+## Canonical Food Object Schema
+
+```json
+FoodItem {
+  id: "uuid",
+
+  canonical_name: "milk",
+  display_name: "Whole Milk",
+
+  quantity: {
+    amount: 1,
+    unit: "gallon"
+  },
+
+  category: {
+    primary: "Dairy",
+    secondary: "Refrigerated"
+  },
+
+  attributes: {
+    fat_content: "whole",
+    organic: false,
+    brand_preference: null
+  },
+
+  flexibility: {
+    substitution_allowed: true,
+    acceptable_variants: ["2%", "organic"],
+    strict: false
+  },
+
+  usage_context: {
+    role: "ingredient",
+    required: true,
+    recipe_ids: ["recipe_uuid_1"]
+  },
+
+  inventory_state: {
+    status: "unknown",
+    on_hand_amount: null,
+    last_confirmed: null
+  },
+
+  sourcing: {
+    store_affinity: null,
+    bulk_allowed: true,
+    generic_ok: true
+  },
+
+  metadata: {
+    created_by: "ai",
+    confidence: 0.92
+  }
+}
+```
+
+---
+
+## Field Definitions & Constraints
+
+### `canonical_name`
+
+* Lowercase
+* Generic
+* No brand names
+* No size descriptors
+  Used as the **semantic anchor** for aggregation, substitution, and formatting.
+
+---
+
+### `display_name`
+
+* Human-readable
+* Used for UI and conversation only
+* Never used for logic or matching
+
+---
+
+### `quantity`
+
+Structured object only.
+
+```json
+{ "amount": number, "unit": string }
+```
+
+Never store quantities as free-text strings.
+Required for scaling recipes, aggregation, and unit conversion.
+
+---
+
+### `category`
+
+Two-level categorization:
+
+* `primary`: universal grouping
+* `secondary`: contextual / store-adjacent grouping
+
+Used for aisle grouping and store projections.
+
+---
+
+### `attributes`
+
+Flexible key-value map for preferences and descriptors.
+Examples:
+
+* fat content
+* organic
+* dietary qualifiers
+* brand preference
+
+Must remain extensible without schema changes.
+
+---
+
+### `flexibility`
+
+Defines how rigid the item is.
+
+* `substitution_allowed`: boolean
+* `acceptable_variants`: list of allowed swaps
+* `strict`: if true, no substitutions allowed
+
+Used by recipe logic and shopping suggestions.
+
+---
+
+### `usage_context`
+
+Describes how the item is currently being used.
+
+* `role`: ingredient | planned | inventory | shopping
+* `required`: whether omission breaks the recipe
+* `recipe_ids`: references only, no duplication
+
+Allows one object to serve multiple workflows.
+
+---
+
+### `inventory_state`
+
+Tracks inferred and confirmed inventory status.
+
+Possible `status` values:
+
+* `confirmed`
+* `likely`
+* `unknown`
+* `out`
+
+Never assume certainty unless explicitly confirmed.
+
+---
+
+### `sourcing`
+
+Decouples item identity from procurement.
+
+* `store_affinity`: preferred store (optional)
+* `bulk_allowed`: boolean
+* `generic_ok`: boolean
+
+Enables store formatting, budget logic, and future pricing.
+
+---
+
+### `metadata`
+
+System-level information.
+
+* `created_by`: ai | user
+* `confidence`: inference confidence score (0–1)
+
+Used for debugging, trust calibration, and future audits.
+
+---
+
+## Usage Rules
+
+* This object is **never duplicated**
+* Recipes, plans, and lists **reference** or **aggregate** these objects
+* Shopping lists are **derived views**, not separate entities
+* Store-specific formatting occurs in a **projection layer**, not here
+
+---
+
+## Explicit Non-Goals (Do Not Implement)
+
+* Separate RecipeIngredient objects
+* Separate ShoppingItem objects
+* Store-specific logic inside the core schema
+* Free-text quantities
+* Hardcoded brand SKUs
+* Assumed inventory certainty
+
+---
+
+## Supported Future Features (No Schema Changes Required)
+
+* Weekly aggregation
+* Pantry inference from conversation
+* Store-formatted exports
+* Substitution logic
+* Budget constraints
+* Nutrition overlays
+* Multi-store comparisons
+* Voice confirmation workflows
+
+---
+
+## Summary
+
+This schema is the **single source of truth** for all food-related logic.
+All other systems consume or project from it.
+No mutations. No forks. No parallel models.
+
+---

@@ -4,10 +4,11 @@ import {
   recipes, type Recipe, type InsertRecipe,
   cookbookRecipes, type CookbookRecipe, type InsertCookbookRecipe,
   shoppingLists, shoppingListItems, type ShoppingList, type ShoppingListItem, type InsertShoppingList, type InsertShoppingListItem,
-  kitchenConversations, kitchenMessages, type KitchenConversation, type KitchenMessage, type InsertKitchenConversation, type InsertKitchenMessage
+  kitchenConversations, kitchenMessages, type KitchenConversation, type KitchenMessage, type InsertKitchenConversation, type InsertKitchenMessage,
+  foodItems, type FoodItem, type InsertFoodItem, type FoodItemRole
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, lte } from "drizzle-orm";
+import { eq, desc, and, lte, or, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // Ingredient Memory
@@ -56,6 +57,16 @@ export interface IStorage {
   getOrCreateConversation(userId: string): Promise<KitchenConversation & { messages: KitchenMessage[] }>;
   addMessage(data: InsertKitchenMessage): Promise<KitchenMessage>;
   getMessages(conversationId: number): Promise<KitchenMessage[]>;
+
+  // Canonical Food Objects (CFO)
+  getFoodItems(userId: string, role?: FoodItemRole): Promise<FoodItem[]>;
+  getFoodItemByCanonicalName(userId: string, canonicalName: string): Promise<FoodItem | null>;
+  getFoodItemByCanonicalNameAndRole(userId: string, canonicalName: string, role: FoodItemRole): Promise<FoodItem | null>;
+  upsertFoodItem(data: InsertFoodItem): Promise<FoodItem>;
+  updateFoodItem(id: number, data: Partial<InsertFoodItem>): Promise<FoodItem>;
+  deleteFoodItem(id: number): Promise<void>;
+  getInventoryItems(userId: string): Promise<FoodItem[]>;
+  getShoppingFoodItems(userId: string, shoppingListId?: number): Promise<FoodItem[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -350,6 +361,99 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(kitchenMessages)
       .where(eq(kitchenMessages.conversationId, conversationId))
       .orderBy(kitchenMessages.createdAt);
+  }
+
+  // =============== CANONICAL FOOD OBJECTS (CFO) ===============
+  async getFoodItems(userId: string, role?: FoodItemRole): Promise<FoodItem[]> {
+    if (role) {
+      const items = await db.select().from(foodItems)
+        .where(eq(foodItems.userId, userId))
+        .orderBy(desc(foodItems.updatedAt));
+      return items.filter(item => item.usageContext?.role === role);
+    }
+    return db.select().from(foodItems)
+      .where(eq(foodItems.userId, userId))
+      .orderBy(desc(foodItems.updatedAt));
+  }
+
+  async getFoodItemByCanonicalName(userId: string, canonicalName: string): Promise<FoodItem | null> {
+    const [item] = await db.select().from(foodItems)
+      .where(and(
+        eq(foodItems.userId, userId),
+        eq(foodItems.canonicalName, canonicalName.toLowerCase())
+      ));
+    return item || null;
+  }
+
+  async getFoodItemByCanonicalNameAndRole(userId: string, canonicalName: string, role: FoodItemRole): Promise<FoodItem | null> {
+    const items = await db.select().from(foodItems)
+      .where(and(
+        eq(foodItems.userId, userId),
+        eq(foodItems.canonicalName, canonicalName.toLowerCase())
+      ));
+    return items.find(item => item.usageContext?.role === role) || null;
+  }
+
+  async upsertFoodItem(data: InsertFoodItem): Promise<FoodItem> {
+    const canonicalName = data.canonicalName.toLowerCase();
+    const role = data.usageContext?.role;
+    
+    if (!role) {
+      throw new Error("usageContext.role is required for CFO upsert");
+    }
+    
+    // Find existing item with SAME canonical name AND SAME role
+    const existing = await this.getFoodItemByCanonicalNameAndRole(data.userId, canonicalName, role);
+
+    if (existing) {
+      const [updated] = await db.update(foodItems)
+        .set({
+          ...data,
+          canonicalName,
+          updatedAt: new Date(),
+        })
+        .where(eq(foodItems.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db.insert(foodItems)
+      .values({ ...data, canonicalName })
+      .returning();
+    return created;
+  }
+
+  async updateFoodItem(id: number, data: Partial<InsertFoodItem>): Promise<FoodItem> {
+    const [updated] = await db.update(foodItems)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(foodItems.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteFoodItem(id: number): Promise<void> {
+    await db.delete(foodItems).where(eq(foodItems.id, id));
+  }
+
+  async getInventoryItems(userId: string): Promise<FoodItem[]> {
+    const items = await db.select().from(foodItems)
+      .where(eq(foodItems.userId, userId))
+      .orderBy(desc(foodItems.updatedAt));
+    return items.filter(item => 
+      item.usageContext?.role === "inventory" && 
+      item.inventoryState?.status !== "out"
+    );
+  }
+
+  async getShoppingFoodItems(userId: string, shoppingListId?: number): Promise<FoodItem[]> {
+    const items = await db.select().from(foodItems)
+      .where(eq(foodItems.userId, userId))
+      .orderBy(foodItems.canonicalName);
+    return items.filter(item => {
+      if (item.usageContext?.role !== "shopping") return false;
+      if (shoppingListId && item.usageContext?.shopping_list_id !== shoppingListId) return false;
+      return true;
+    });
   }
 }
 
