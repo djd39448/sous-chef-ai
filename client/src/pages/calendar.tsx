@@ -120,7 +120,6 @@ export default function Calendar() {
   });
 
   const weeksWithPlans = new Set(calendarData?.mealPlans?.map(p => p.weekStartDate) || []);
-  const weeksWithLists = new Set(calendarData?.shoppingLists?.filter(l => l.weekStartDate).map(l => l.weekStartDate!) || []);
   
   const navigateWeek = (direction: "prev" | "next") => {
     if (direction === "prev") {
@@ -254,10 +253,8 @@ export default function Calendar() {
               currentMonth={currentMonth}
               weeks={getMonthWeeks()}
               weeksWithPlans={weeksWithPlans}
-              weeksWithLists={weeksWithLists}
               onSelectWeek={selectWeek}
               onCreatePlan={(weekStart) => generateMutation.mutate(getWeekStartDate(weekStart))}
-              onViewList={() => navigate("/shopping")}
               isGenerating={generateMutation.isPending}
             />
           ) : weekLoading ? (
@@ -298,14 +295,12 @@ interface MonthViewProps {
   currentMonth: Date;
   weeks: Date[];
   weeksWithPlans: Set<string>;
-  weeksWithLists: Set<string>;
   onSelectWeek: (weekStart: Date) => void;
   onCreatePlan: (weekStart: Date) => void;
-  onViewList: () => void;
   isGenerating: boolean;
 }
 
-function MonthView({ currentMonth, weeks, weeksWithPlans, weeksWithLists, onSelectWeek, onCreatePlan, onViewList, isGenerating }: MonthViewProps) {
+function MonthView({ currentMonth, weeks, weeksWithPlans, onSelectWeek, onCreatePlan, isGenerating }: MonthViewProps) {
   const today = new Date();
   
   return (
@@ -319,7 +314,6 @@ function MonthView({ currentMonth, weeks, weeksWithPlans, weeksWithLists, onSele
       {weeks.map((weekStart) => {
         const weekDateStr = getWeekStartDate(weekStart);
         const hasPlan = weeksWithPlans.has(weekDateStr);
-        const hasList = weeksWithLists.has(weekDateStr);
         const isThisWeek = isSameWeek(weekStart, today, { weekStartsOn: 1 });
         
         return (
@@ -359,7 +353,7 @@ function MonthView({ currentMonth, weeks, weeksWithPlans, weeksWithLists, onSele
             
             <div 
               className={`
-                flex items-center justify-between px-3 py-2 cursor-pointer gap-2
+                flex items-center justify-between px-3 py-2 cursor-pointer
                 ${hasPlan ? 'bg-primary/5 hover-elevate' : 'bg-muted/10'}
               `}
               onClick={() => hasPlan ? onSelectWeek(weekStart) : null}
@@ -368,38 +362,25 @@ function MonthView({ currentMonth, weeks, weeksWithPlans, weeksWithLists, onSele
               <span className="text-xs text-muted-foreground">
                 Week of {format(weekStart, "MMM d")}
               </span>
-              <div className="flex gap-1">
-                {hasList && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={(e) => { e.stopPropagation(); onViewList(); }}
-                    data-testid={`button-view-list-${weekDateStr}`}
-                  >
-                    <ShoppingCart className="h-3 w-3 mr-1" />
-                    View List
-                  </Button>
-                )}
-                {hasPlan ? (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={(e) => { e.stopPropagation(); onSelectWeek(weekStart); }}
-                  >
-                    View Plan
-                  </Button>
-                ) : (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={(e) => { e.stopPropagation(); onCreatePlan(weekStart); }}
-                    disabled={isGenerating}
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Create
-                  </Button>
-                )}
-              </div>
+              {hasPlan ? (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={(e) => { e.stopPropagation(); onSelectWeek(weekStart); }}
+                >
+                  View Plan
+                </Button>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={(e) => { e.stopPropagation(); onCreatePlan(weekStart); }}
+                  disabled={isGenerating}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Create
+                </Button>
+              )}
             </div>
           </div>
         );
