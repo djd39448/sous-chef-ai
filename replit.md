@@ -40,6 +40,14 @@ Preferred communication style: Simple, everyday language.
 - **Tool Calling**: OpenAI function calling for updating ingredients, creating meal plans, and generating shopping lists
 - **Conversation Memory**: Per-user conversation history stored in database
 - **Ingredient Memory**: Soft inventory inferred from conversations with confidence scores
+- **Recipe Chat**: Stateless conversation for individual recipe pages (allows asking questions and swapping meals)
+
+### Recent Changes (Jan 2026)
+- Added recipe detail page (/recipe/:dayId) with dedicated chat interface for viewing and editing meals
+- Enhanced meal plan flow: clickable meal cards now navigate to recipe detail pages
+- Added security checks: meal plan day routes verify user ownership via getMealPlanDayWithOwner
+- Fixed SSE streaming parser with buffering to handle chunked network data correctly
+- Enhanced OpenAI prompt to proactively create meal plans when users express preferences in chat
 
 ### Authentication Flow
 - Replit Auth handles user authentication via OIDC
