@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
-import type { IngredientMemory } from "@shared/schema";
+import type { IngredientMemory, CookbookRecipe } from "@shared/schema";
 
 export const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -132,16 +132,27 @@ export const tools: ChatCompletionTool[] = [
 export function buildMessages(
   userMessage: string,
   conversationHistory: Array<{ role: string; content: string }>,
-  ingredients: IngredientMemory[]
+  ingredients: IngredientMemory[],
+  cookbookRecipes?: CookbookRecipe[]
 ): ChatCompletionMessageParam[] {
   const ingredientContext = ingredients.length > 0
     ? `\n\nUser's current ingredients on hand:\n${ingredients.map(i => `- ${i.name}${i.quantity ? ` (${i.quantity})` : ''}`).join('\n')}`
     : '\n\nUser has not mentioned any ingredients yet.';
 
+  let cookbookContext = '';
+  if (cookbookRecipes && cookbookRecipes.length > 0) {
+    // Include titles and first ~200 chars of content for better RAG context
+    const recipeDetails = cookbookRecipes.slice(0, 15).map(r => {
+      const contentPreview = r.content.slice(0, 200).replace(/\n/g, ' ').trim();
+      return `- ${r.title}: ${contentPreview}...`;
+    }).join('\n');
+    cookbookContext = `\n\nUser's saved cookbook (prefer these for consistency):\n${recipeDetails}\n\nIMPORTANT: When the user asks for a recipe that matches one in their cookbook, use the EXACT recipe from their cookbook to maintain consistency. Don't create new versions of saved recipes.`;
+  }
+
   const messages: ChatCompletionMessageParam[] = [
     {
       role: "system",
-      content: SOUS_CHEF_SYSTEM_PROMPT + ingredientContext
+      content: SOUS_CHEF_SYSTEM_PROMPT + ingredientContext + cookbookContext
     }
   ];
 

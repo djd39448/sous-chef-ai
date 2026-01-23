@@ -1,10 +1,11 @@
 import { useLocation } from "wouter";
-import { MessageCircle, Calendar, ShoppingCart } from "lucide-react";
+import { MessageCircle, Calendar, ShoppingCart, BookOpen } from "lucide-react";
 
 const navItems = [
   { href: "/", icon: MessageCircle, label: "Chat" },
-  { href: "/plan", icon: Calendar, label: "Weekly Plan" },
-  { href: "/shopping", icon: ShoppingCart, label: "Shopping" },
+  { href: "/plan", icon: Calendar, label: "Plan" },
+  { href: "/cookbook", icon: BookOpen, label: "Cookbook" },
+  { href: "/shopping", icon: ShoppingCart, label: "Shop" },
 ];
 
 export function BottomNav() {

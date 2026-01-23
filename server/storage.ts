@@ -2,6 +2,7 @@ import {
   ingredientMemory, type IngredientMemory, type InsertIngredientMemory,
   mealPlans, mealPlanDays, type MealPlan, type MealPlanDay, type InsertMealPlan, type InsertMealPlanDay,
   recipes, type Recipe, type InsertRecipe,
+  cookbookRecipes, type CookbookRecipe, type InsertCookbookRecipe,
   shoppingLists, shoppingListItems, type ShoppingList, type ShoppingListItem, type InsertShoppingList, type InsertShoppingListItem,
   kitchenConversations, kitchenMessages, type KitchenConversation, type KitchenMessage, type InsertKitchenConversation, type InsertKitchenMessage
 } from "@shared/schema";
@@ -29,6 +30,12 @@ export interface IStorage {
   getRecipe(id: number): Promise<Recipe | null>;
   createRecipe(data: InsertRecipe): Promise<Recipe>;
   deleteRecipe(id: number): Promise<void>;
+
+  // Cookbook
+  getCookbookRecipes(userId: string): Promise<CookbookRecipe[]>;
+  getCookbookRecipe(id: number): Promise<CookbookRecipe | null>;
+  addToCookbook(data: InsertCookbookRecipe): Promise<CookbookRecipe>;
+  deleteCookbookRecipe(id: number): Promise<void>;
 
   // Shopping Lists
   getShoppingList(userId: string): Promise<(ShoppingList & { items: ShoppingListItem[] }) | null>;
@@ -113,6 +120,8 @@ export class DatabaseStorage implements IStorage {
         recipeId: mealPlanDays.recipeId,
         mealName: mealPlanDays.mealName,
         notes: mealPlanDays.notes,
+        recipeContent: mealPlanDays.recipeContent,
+        recipeImagePrompt: mealPlanDays.recipeImagePrompt,
         userId: mealPlans.userId,
       })
       .from(mealPlanDays)
@@ -168,6 +177,27 @@ export class DatabaseStorage implements IStorage {
 
   async deleteRecipe(id: number): Promise<void> {
     await db.delete(recipes).where(eq(recipes.id, id));
+  }
+
+  // =============== COOKBOOK ===============
+  async getCookbookRecipes(userId: string): Promise<CookbookRecipe[]> {
+    return db.select().from(cookbookRecipes)
+      .where(eq(cookbookRecipes.userId, userId))
+      .orderBy(desc(cookbookRecipes.createdAt));
+  }
+
+  async getCookbookRecipe(id: number): Promise<CookbookRecipe | null> {
+    const [recipe] = await db.select().from(cookbookRecipes).where(eq(cookbookRecipes.id, id));
+    return recipe || null;
+  }
+
+  async addToCookbook(data: InsertCookbookRecipe): Promise<CookbookRecipe> {
+    const [recipe] = await db.insert(cookbookRecipes).values(data).returning();
+    return recipe;
+  }
+
+  async deleteCookbookRecipe(id: number): Promise<void> {
+    await db.delete(cookbookRecipes).where(eq(cookbookRecipes.id, id));
   }
 
   // =============== SHOPPING LISTS ===============

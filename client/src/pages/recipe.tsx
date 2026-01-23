@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/chat-input";
@@ -9,7 +9,7 @@ import { ChatMessage, TypingIndicator } from "@/components/chat-message";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, RefreshCw, BookPlus, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface RecipeMessage {
@@ -24,7 +24,7 @@ interface MealPlanDay {
   mealName: string;
   notes?: string | null;
   recipeContent?: string | null;
-  recipeImageUrl?: string | null;
+  recipeImagePrompt?: string | null;
 }
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -38,15 +38,39 @@ export default function Recipe() {
   
   const [recipeContent, setRecipeContent] = useState("");
   const [recipeImageUrl, setRecipeImageUrl] = useState<string | null>(null);
+  const [imagePrompt, setImagePrompt] = useState<string | null>(null);
   const [isGeneratingRecipe, setIsGeneratingRecipe] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [recipeGenerated, setRecipeGenerated] = useState(false);
+  const [savedToCookbook, setSavedToCookbook] = useState(false);
   
   const [chatMessages, setChatMessages] = useState<RecipeMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   
   useDocumentTitle("Recipe - Sous Chef AI");
+
+  const saveToCookbookMutation = useMutation({
+    mutationFn: async (data: { title: string; content: string; imagePrompt: string | null }) => {
+      const res = await apiRequest("POST", "/api/kitchen/cookbook", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setSavedToCookbook(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/cookbook"] });
+      toast({
+        title: "Saved to Cookbook",
+        description: "This recipe has been added to your cookbook.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Couldn't save",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: day, isLoading } = useQuery<MealPlanDay | null>({
     queryKey: ["/api/kitchen/meal-plan-day", dayId],
@@ -60,16 +84,34 @@ export default function Recipe() {
 
   const dayName = day ? DAY_NAMES[day.dayOfWeek] : "";
 
+  // Regenerate image from saved prompt
+  const regenerateImageFromPrompt = async (prompt: string) => {
+    setIsGeneratingImage(true);
+    try {
+      const res = await apiRequest("POST", "/api/kitchen/regenerate-image", { prompt });
+      const data = await res.json();
+      if (data.imageUrl) {
+        setRecipeImageUrl(data.imageUrl);
+      }
+    } catch (error) {
+      console.error("Failed to regenerate image:", error);
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
   // Auto-generate recipe when page loads
   useEffect(() => {
     if (day && !recipeGenerated && !isGeneratingRecipe) {
       if (day.recipeContent) {
         // Already have recipe cached
         setRecipeContent(day.recipeContent);
-        if (day.recipeImageUrl) {
-          setRecipeImageUrl(day.recipeImageUrl);
-        }
         setRecipeGenerated(true);
+        // If we have a saved image prompt, regenerate the image
+        if (day.recipeImagePrompt && !recipeImageUrl) {
+          setImagePrompt(day.recipeImagePrompt);
+          regenerateImageFromPrompt(day.recipeImagePrompt);
+        }
       } else {
         // Generate new recipe
         generateRecipe();
@@ -122,6 +164,9 @@ export default function Recipe() {
               if (data.imageUrl) {
                 setRecipeImageUrl(data.imageUrl);
                 setIsGeneratingImage(false);
+              }
+              if (data.imagePrompt) {
+                setImagePrompt(data.imagePrompt);
               }
               if (data.done) {
                 setRecipeGenerated(true);
@@ -285,9 +330,32 @@ export default function Recipe() {
           variant="ghost" 
           size="icon"
           onClick={() => {
+            if (!recipeContent || !day) return;
+            saveToCookbookMutation.mutate({
+              title: day.mealName,
+              content: recipeContent,
+              imagePrompt: imagePrompt,
+            });
+          }}
+          disabled={!recipeContent || saveToCookbookMutation.isPending || savedToCookbook}
+          data-testid="button-save-cookbook"
+        >
+          {savedToCookbook ? (
+            <Check className="h-5 w-5 text-green-600" />
+          ) : (
+            <BookPlus className="h-5 w-5" />
+          )}
+        </Button>
+        <Button 
+          variant="ghost" 
+          size="icon"
+          onClick={() => {
             setRecipeContent("");
+            setRecipeImageUrl(null);
+            setImagePrompt(null);
             setRecipeGenerated(false);
             setChatMessages([]);
+            setSavedToCookbook(false);
           }}
           disabled={isGeneratingRecipe}
           data-testid="button-regenerate"

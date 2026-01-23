@@ -43,7 +43,7 @@ export const mealPlanDays = pgTable("meal_plan_days", {
   mealName: text("meal_name").notNull(),
   notes: text("notes"),
   recipeContent: text("recipe_content"),
-  recipeImageUrl: text("recipe_image_url"),
+  recipeImagePrompt: text("recipe_image_prompt"),
 });
 
 export const insertMealPlanSchema = createInsertSchema(mealPlans).omit({
@@ -81,6 +81,24 @@ export const insertRecipeSchema = createInsertSchema(recipes).omit({
 
 export type Recipe = typeof recipes.$inferSelect;
 export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
+
+// ============= COOKBOOK (Master Recipe Collection) =============
+export const cookbookRecipes = pgTable("cookbook_recipes", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  imagePrompt: text("image_prompt"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCookbookRecipeSchema = createInsertSchema(cookbookRecipes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type CookbookRecipe = typeof cookbookRecipes.$inferSelect;
+export type InsertCookbookRecipe = z.infer<typeof insertCookbookRecipeSchema>;
 
 // ============= SHOPPING LISTS =============
 export const shoppingLists = pgTable("shopping_lists", {

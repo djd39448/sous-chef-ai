@@ -47,12 +47,15 @@ export async function registerRoutes(
       // Get user's ingredients
       const ingredients = await storage.getIngredients(userId);
 
+      // Get user's cookbook recipes for RAG context
+      const cookbookRecipes = await storage.getCookbookRecipes(userId);
+
       // Get conversation history
       const messages = await storage.getMessages(conversation.id);
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
 
-      // Build messages for OpenAI
-      const chatMessages = buildMessages(content, history.slice(0, -1), ingredients);
+      // Build messages for OpenAI with cookbook context
+      const chatMessages = buildMessages(content, history.slice(0, -1), ingredients, cookbookRecipes);
 
       // Setup SSE
       res.setHeader("Content-Type", "text/event-stream");
@@ -180,12 +183,17 @@ export async function registerRoutes(
       const ingredients = await storage.getIngredients(userId);
       const ingredientList = ingredients.map(i => i.name).join(", ") || "common pantry items";
 
+      const cookbookRecipes = await storage.getCookbookRecipes(userId);
+      const cookbookContext = cookbookRecipes.length > 0 
+        ? `User's saved cookbook recipes (prefer these for consistency): ${cookbookRecipes.slice(0, 20).map(r => r.title).join(", ")}.` 
+        : "";
+
       const response = await openai.chat.completions.create({
         model: "gpt-4.1",
         messages: [
           {
             role: "system",
-            content: "You are a helpful meal planning assistant. Generate a diverse, family-friendly weekly dinner plan. Use the ingredients provided when possible."
+            content: `You are a helpful meal planning assistant. Generate a diverse, family-friendly weekly dinner plan. Use the ingredients provided when possible. ${cookbookContext}`
           },
           {
             role: "user",
@@ -316,9 +324,11 @@ Keep it family-friendly and aim for 30 minutes or less. Be specific with measure
       res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
       
       try {
+        const imagePrompt = `Professional food photography of ${day.mealName}. Photorealistic, appetizing presentation, warm lighting, shallow depth of field, garnished beautifully, served on a nice plate, restaurant quality presentation.`;
+        
         const imageResponse = await openai.images.generate({
           model: "gpt-image-1",
-          prompt: `Professional food photography of ${day.mealName}. Photorealistic, appetizing presentation, warm lighting, shallow depth of field, garnished beautifully, served on a nice plate, restaurant quality presentation.`,
+          prompt: imagePrompt,
           n: 1,
           size: "1024x1024",
         });
@@ -326,8 +336,9 @@ Keep it family-friendly and aim for 30 minutes or less. Be specific with measure
         const imageBase64 = imageResponse.data?.[0]?.b64_json;
         if (imageBase64) {
           const imageDataUrl = `data:image/png;base64,${imageBase64}`;
-          await storage.updateMealPlanDay(dayId, { recipeImageUrl: imageDataUrl });
-          res.write(`data: ${JSON.stringify({ imageUrl: imageDataUrl })}\n\n`);
+          // Store the prompt, not the base64 (to save space)
+          await storage.updateMealPlanDay(dayId, { recipeImagePrompt: imagePrompt });
+          res.write(`data: ${JSON.stringify({ imageUrl: imageDataUrl, imagePrompt })}\n\n`);
         }
       } catch (imgError) {
         console.error("Error generating image:", imgError);
@@ -578,6 +589,110 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
     } catch (error) {
       console.error("Error fetching ingredients:", error);
       res.status(500).json({ error: "Failed to fetch ingredients" });
+    }
+  });
+
+  // =============== COOKBOOK ===============
+  app.get("/api/kitchen/cookbook", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const recipes = await storage.getCookbookRecipes(userId);
+      res.json(recipes);
+    } catch (error) {
+      console.error("Error fetching cookbook:", error);
+      res.status(500).json({ error: "Failed to fetch cookbook" });
+    }
+  });
+
+  app.get("/api/kitchen/cookbook/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const id = parseInt(req.params.id as string, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid recipe ID" });
+
+      const recipe = await storage.getCookbookRecipe(id);
+      if (!recipe) return res.status(404).json({ error: "Recipe not found" });
+      if (recipe.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+
+      res.json(recipe);
+    } catch (error) {
+      console.error("Error fetching cookbook recipe:", error);
+      res.status(500).json({ error: "Failed to fetch recipe" });
+    }
+  });
+
+  app.post("/api/kitchen/cookbook", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { title, content, imagePrompt } = req.body;
+      if (!title || !content) return res.status(400).json({ error: "Title and content required" });
+
+      const recipe = await storage.addToCookbook({
+        userId,
+        title,
+        content,
+        imagePrompt: imagePrompt || null,
+      });
+
+      res.json(recipe);
+    } catch (error) {
+      console.error("Error adding to cookbook:", error);
+      res.status(500).json({ error: "Failed to add recipe to cookbook" });
+    }
+  });
+
+  app.delete("/api/kitchen/cookbook/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const id = parseInt(req.params.id as string, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid recipe ID" });
+
+      const recipe = await storage.getCookbookRecipe(id);
+      if (!recipe) return res.status(404).json({ error: "Recipe not found" });
+      if (recipe.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+
+      await storage.deleteCookbookRecipe(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting cookbook recipe:", error);
+      res.status(500).json({ error: "Failed to delete recipe" });
+    }
+  });
+
+  // Regenerate image from stored prompt (on-demand)
+  app.post("/api/kitchen/regenerate-image", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { prompt } = req.body;
+      if (!prompt) return res.status(400).json({ error: "Image prompt required" });
+
+      const imageResponse = await openai.images.generate({
+        model: "gpt-image-1",
+        prompt,
+        n: 1,
+        size: "1024x1024",
+      });
+
+      const imageBase64 = imageResponse.data?.[0]?.b64_json;
+      if (!imageBase64) {
+        return res.status(500).json({ error: "Failed to generate image" });
+      }
+
+      const imageUrl = `data:image/png;base64,${imageBase64}`;
+      res.json({ imageUrl });
+    } catch (error) {
+      console.error("Error regenerating image:", error);
+      res.status(500).json({ error: "Failed to regenerate image" });
     }
   });
 

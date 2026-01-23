@@ -12,6 +12,7 @@ import Chat from "@/pages/chat";
 import MealPlan from "@/pages/meal-plan";
 import Shopping from "@/pages/shopping";
 import Recipe from "@/pages/recipe";
+import Cookbook from "@/pages/cookbook";
 
 function AuthenticatedRoutes() {
   return (
@@ -19,6 +20,7 @@ function AuthenticatedRoutes() {
       <Route path="/" component={Chat} />
       <Route path="/plan" component={MealPlan} />
       <Route path="/recipe/:dayId" component={Recipe} />
+      <Route path="/cookbook" component={Cookbook} />
       <Route path="/shopping" component={Shopping} />
       <Route component={NotFound} />
     </Switch>
