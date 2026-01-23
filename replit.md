@@ -45,7 +45,8 @@ Preferred communication style: Simple, everyday language.
 ### Recent Changes (Jan 2026)
 - Added recipe detail page (/recipe/:dayId) with dedicated chat interface for viewing and editing meals
 - **Recipe auto-generation**: Full recipe is automatically generated and displayed when clicking a meal card
-- Recipe content is cached in database (recipeContent field) for instant loading on repeat visits
+- **AI-generated food photography**: Photorealistic image of each dish is generated and displayed at the top of the recipe page
+- Recipe content and images are cached in database (recipeContent, recipeImageUrl fields) for instant loading on repeat visits
 - Enhanced meal plan flow: clickable meal cards now navigate to recipe detail pages
 - Added security checks: meal plan day routes verify user ownership via getMealPlanDayWithOwner
 - Fixed SSE streaming parser with buffering to handle chunked network data correctly

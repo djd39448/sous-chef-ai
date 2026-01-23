@@ -43,6 +43,7 @@ export const mealPlanDays = pgTable("meal_plan_days", {
   mealName: text("meal_name").notNull(),
   notes: text("notes"),
   recipeContent: text("recipe_content"),
+  recipeImageUrl: text("recipe_image_url"),
 });
 
 export const insertMealPlanSchema = createInsertSchema(mealPlans).omit({

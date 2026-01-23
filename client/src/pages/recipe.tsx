@@ -24,6 +24,7 @@ interface MealPlanDay {
   mealName: string;
   notes?: string | null;
   recipeContent?: string | null;
+  recipeImageUrl?: string | null;
 }
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -36,7 +37,9 @@ export default function Recipe() {
   const scrollRef = useRef<HTMLDivElement>(null);
   
   const [recipeContent, setRecipeContent] = useState("");
+  const [recipeImageUrl, setRecipeImageUrl] = useState<string | null>(null);
   const [isGeneratingRecipe, setIsGeneratingRecipe] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [recipeGenerated, setRecipeGenerated] = useState(false);
   
   const [chatMessages, setChatMessages] = useState<RecipeMessage[]>([]);
@@ -63,6 +66,9 @@ export default function Recipe() {
       if (day.recipeContent) {
         // Already have recipe cached
         setRecipeContent(day.recipeContent);
+        if (day.recipeImageUrl) {
+          setRecipeImageUrl(day.recipeImageUrl);
+        }
         setRecipeGenerated(true);
       } else {
         // Generate new recipe
@@ -76,6 +82,8 @@ export default function Recipe() {
     
     setIsGeneratingRecipe(true);
     setRecipeContent("");
+    setRecipeImageUrl(null);
+    setIsGeneratingImage(false);
 
     try {
       const response = await fetch(`/api/kitchen/generate-recipe/${dayId}`, {
@@ -108,9 +116,17 @@ export default function Recipe() {
                 fullContent += data.content;
                 setRecipeContent(fullContent);
               }
+              if (data.generatingImage) {
+                setIsGeneratingImage(true);
+              }
+              if (data.imageUrl) {
+                setRecipeImageUrl(data.imageUrl);
+                setIsGeneratingImage(false);
+              }
               if (data.done) {
                 setRecipeGenerated(true);
                 setIsGeneratingRecipe(false);
+                setIsGeneratingImage(false);
               }
             } catch {}
           }
@@ -118,6 +134,7 @@ export default function Recipe() {
       }
     } catch (error) {
       setIsGeneratingRecipe(false);
+      setIsGeneratingImage(false);
       toast({
         title: "Couldn't load recipe",
         description: "Please try refreshing.",
@@ -282,6 +299,27 @@ export default function Recipe() {
       {/* Scrollable content */}
       <ScrollArea className="flex-1" ref={scrollRef}>
         <div className="max-w-2xl mx-auto px-4 py-4 pb-32">
+          {/* Recipe Image */}
+          {(recipeImageUrl || isGeneratingImage) && (
+            <Card className="mb-4 overflow-hidden">
+              {isGeneratingImage && !recipeImageUrl ? (
+                <div className="aspect-square bg-muted flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <RefreshCw className="h-6 w-6 animate-spin" />
+                    <span className="text-sm">Creating photo...</span>
+                  </div>
+                </div>
+              ) : recipeImageUrl ? (
+                <img 
+                  src={recipeImageUrl} 
+                  alt={day.mealName}
+                  className="w-full aspect-square object-cover"
+                  data-testid="recipe-image"
+                />
+              ) : null}
+            </Card>
+          )}
+
           {/* Recipe Display */}
           <Card className="p-4 mb-4">
             {isGeneratingRecipe && !recipeContent && (
