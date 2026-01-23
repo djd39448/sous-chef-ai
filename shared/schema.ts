@@ -42,6 +42,7 @@ export const mealPlanDays = pgTable("meal_plan_days", {
   recipeId: integer("recipe_id").references(() => recipes.id),
   mealName: text("meal_name").notNull(),
   notes: text("notes"),
+  recipeContent: text("recipe_content"),
 });
 
 export const insertMealPlanSchema = createInsertSchema(mealPlans).omit({

@@ -245,7 +245,7 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const dayId = parseInt(req.params.id, 10);
+      const dayId = parseInt(req.params.id as string, 10);
       if (isNaN(dayId)) return res.status(400).json({ error: "Invalid day ID" });
 
       const day = await storage.getMealPlanDayWithOwner(dayId);
@@ -256,6 +256,72 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching meal plan day:", error);
       res.status(500).json({ error: "Failed to fetch meal plan day" });
+    }
+  });
+
+  // Auto-generate full recipe for a meal
+  app.post("/api/kitchen/generate-recipe/:dayId", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const dayId = parseInt(req.params.dayId as string, 10);
+      if (isNaN(dayId)) return res.status(400).json({ error: "Invalid day ID" });
+
+      const day = await storage.getMealPlanDayWithOwner(dayId);
+      if (!day) return res.status(404).json({ error: "Day not found" });
+      if (day.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+
+      const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const dayName = DAY_NAMES[day.dayOfWeek];
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const systemPrompt = `You are a helpful sous chef. Generate a complete, easy-to-follow recipe for: ${day.mealName}
+
+Format the recipe with:
+- A brief appetizing description (1-2 sentences)
+- Prep Time and Cook Time
+- Serves (number of portions)
+- Ingredients list with quantities
+- Step-by-step numbered instructions
+
+Keep it family-friendly and aim for 30 minutes or less. Be specific with measurements and temperatures.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4.1",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Please give me the full recipe for ${day.mealName}.` }
+        ],
+        stream: true,
+      });
+
+      let fullRecipe = "";
+
+      for await (const chunk of response) {
+        const delta = chunk.choices[0]?.delta;
+        if (delta?.content) {
+          fullRecipe += delta.content;
+          res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
+        }
+      }
+
+      // Save recipe to database
+      await storage.updateMealPlanDay(dayId, { recipeContent: fullRecipe });
+
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+    } catch (error) {
+      console.error("Error generating recipe:", error);
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: "Failed to generate recipe" })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ error: "Failed to generate recipe" });
+      }
     }
   });
 
@@ -452,7 +518,7 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
 
   app.patch("/api/kitchen/shopping-item/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(req.params.id as string);
       const { checked } = req.body;
 
       const item = await storage.updateShoppingListItem(id, { checked: checked ? 1 : 0 });

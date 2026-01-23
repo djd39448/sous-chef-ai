@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useAuth } from "@/hooks/use-auth";
+import { queryClient } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/chat-input";
 import { ChatMessage, TypingIndicator } from "@/components/chat-message";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Check } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface RecipeMessage {
@@ -32,12 +32,16 @@ export default function Recipe() {
   const params = useParams<{ dayId: string }>();
   const dayId = parseInt(params.dayId || "0", 10);
   const [, navigate] = useLocation();
-  const { user } = useAuth();
   const { toast } = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  const [recipeContent, setRecipeContent] = useState("");
+  const [isGeneratingRecipe, setIsGeneratingRecipe] = useState(false);
+  const [recipeGenerated, setRecipeGenerated] = useState(false);
+  
+  const [chatMessages, setChatMessages] = useState<RecipeMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [messages, setMessages] = useState<RecipeMessage[]>([]);
   
   useDocumentTitle("Recipe - Sous Chef AI");
 
@@ -53,22 +57,80 @@ export default function Recipe() {
 
   const dayName = day ? DAY_NAMES[day.dayOfWeek] : "";
 
+  // Auto-generate recipe when page loads
   useEffect(() => {
-    if (day && messages.length === 0) {
-      const initialMessage: RecipeMessage = {
-        id: Date.now(),
-        role: "assistant",
-        content: `Here's your recipe for **${day.mealName}**!\n\n${day.recipeContent || "Ask me for the full recipe, cooking tips, or if you'd like to swap this for something else."}`
-      };
-      setMessages([initialMessage]);
+    if (day && !recipeGenerated && !isGeneratingRecipe) {
+      if (day.recipeContent) {
+        // Already have recipe cached
+        setRecipeContent(day.recipeContent);
+        setRecipeGenerated(true);
+      } else {
+        // Generate new recipe
+        generateRecipe();
+      }
     }
-  }, [day, messages.length]);
+  }, [day, recipeGenerated, isGeneratingRecipe]);
+
+  const generateRecipe = async () => {
+    if (!day || isGeneratingRecipe) return;
+    
+    setIsGeneratingRecipe(true);
+    setRecipeContent("");
+
+    try {
+      const response = await fetch(`/api/kitchen/generate-recipe/${dayId}`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) throw new Error("Failed to generate recipe");
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let fullContent = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.content) {
+                fullContent += data.content;
+                setRecipeContent(fullContent);
+              }
+              if (data.done) {
+                setRecipeGenerated(true);
+                setIsGeneratingRecipe(false);
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (error) {
+      setIsGeneratingRecipe(false);
+      toast({
+        title: "Couldn't load recipe",
+        description: "Please try refreshing.",
+        variant: "destructive",
+      });
+    }
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, streamingContent]);
+  }, [chatMessages, streamingContent]);
 
   const sendMessage = async (content: string) => {
     if (!day) return;
@@ -78,7 +140,7 @@ export default function Recipe() {
       role: "user",
       content,
     };
-    setMessages(prev => [...prev, userMessage]);
+    setChatMessages(prev => [...prev, userMessage]);
     setIsStreaming(true);
     setStreamingContent("");
 
@@ -90,7 +152,8 @@ export default function Recipe() {
           content, 
           dayId: day.id,
           mealName: day.mealName,
-          dayName 
+          dayName,
+          currentRecipe: recipeContent
         }),
         credentials: "include",
       });
@@ -130,17 +193,22 @@ export default function Recipe() {
                   role: "assistant",
                   content: fullContent,
                 };
-                setMessages(prev => [...prev, assistantMessage]);
+                setChatMessages(prev => [...prev, assistantMessage]);
                 setStreamingContent("");
                 setIsStreaming(false);
                 
                 if (updatedMeal) {
+                  // Meal was swapped - need to regenerate recipe
                   queryClient.invalidateQueries({ queryKey: ["/api/kitchen/meal-plan-day", dayId] });
                   queryClient.invalidateQueries({ queryKey: ["/api/kitchen/meal-plan"] });
                   toast({
                     title: "Meal updated!",
                     description: `${dayName}'s dinner is now ${updatedMeal.mealName}`,
                   });
+                  // Reset and regenerate
+                  setRecipeContent("");
+                  setRecipeGenerated(false);
+                  setChatMessages([]);
                 }
               }
             } catch {}
@@ -182,6 +250,7 @@ export default function Recipe() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
+      {/* Header */}
       <header className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10">
         <Button 
           variant="ghost" 
@@ -198,34 +267,85 @@ export default function Recipe() {
         <Button 
           variant="ghost" 
           size="icon"
-          onClick={() => navigate("/plan")}
-          data-testid="button-done"
+          onClick={() => {
+            setRecipeContent("");
+            setRecipeGenerated(false);
+            setChatMessages([]);
+          }}
+          disabled={isGeneratingRecipe}
+          data-testid="button-regenerate"
         >
-          <Check className="h-5 w-5" />
+          <RefreshCw className={`h-5 w-5 ${isGeneratingRecipe ? 'animate-spin' : ''}`} />
         </Button>
       </header>
 
+      {/* Scrollable content */}
       <ScrollArea className="flex-1" ref={scrollRef}>
-        <div className="max-w-2xl mx-auto px-4 py-4 pb-24">
-          {messages.map((msg) => (
-            <ChatMessage
-              key={msg.id}
-              role={msg.role as "user" | "assistant"}
-              content={msg.content}
-            />
-          ))}
-          {isStreaming && streamingContent && (
-            <ChatMessage role="assistant" content={streamingContent} />
+        <div className="max-w-2xl mx-auto px-4 py-4 pb-32">
+          {/* Recipe Display */}
+          <Card className="p-4 mb-4">
+            {isGeneratingRecipe && !recipeContent && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span>Generating recipe...</span>
+              </div>
+            )}
+            {recipeContent && (
+              <div className="prose prose-sm dark:prose-invert max-w-none" data-testid="recipe-content">
+                {recipeContent.split('\n').map((line, i) => {
+                  if (line.startsWith('# ')) {
+                    return <h1 key={i} className="text-xl font-bold mt-0 mb-2">{line.slice(2)}</h1>;
+                  }
+                  if (line.startsWith('## ')) {
+                    return <h2 key={i} className="text-lg font-semibold mt-4 mb-2">{line.slice(3)}</h2>;
+                  }
+                  if (line.startsWith('### ')) {
+                    return <h3 key={i} className="text-base font-semibold mt-3 mb-1">{line.slice(4)}</h3>;
+                  }
+                  if (line.startsWith('- ')) {
+                    return <li key={i} className="ml-4">{line.slice(2)}</li>;
+                  }
+                  if (line.match(/^\d+\./)) {
+                    return <li key={i} className="ml-4 list-decimal">{line.replace(/^\d+\.\s*/, '')}</li>;
+                  }
+                  if (line.startsWith('**') && line.endsWith('**')) {
+                    return <p key={i} className="font-semibold my-1">{line.slice(2, -2)}</p>;
+                  }
+                  if (line.trim() === '') {
+                    return <br key={i} />;
+                  }
+                  return <p key={i} className="my-1">{line}</p>;
+                })}
+              </div>
+            )}
+          </Card>
+
+          {/* Chat Messages */}
+          {chatMessages.length > 0 && (
+            <div className="border-t border-border pt-4 mt-4">
+              <p className="text-xs text-muted-foreground mb-3">Questions & Changes</p>
+              {chatMessages.map((msg) => (
+                <ChatMessage
+                  key={msg.id}
+                  role={msg.role as "user" | "assistant"}
+                  content={msg.content}
+                />
+              ))}
+              {isStreaming && streamingContent && (
+                <ChatMessage role="assistant" content={streamingContent} />
+              )}
+              {isStreaming && !streamingContent && <TypingIndicator />}
+            </div>
           )}
-          {isStreaming && !streamingContent && <TypingIndicator />}
         </div>
       </ScrollArea>
 
+      {/* Chat Input */}
       <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border p-4 safe-area-bottom">
         <ChatInput
           onSend={sendMessage}
-          disabled={isStreaming}
-          placeholder="Ask about this recipe or swap it..."
+          disabled={isStreaming || isGeneratingRecipe}
+          placeholder="Make substitutions or swap this meal..."
         />
       </div>
     </div>
