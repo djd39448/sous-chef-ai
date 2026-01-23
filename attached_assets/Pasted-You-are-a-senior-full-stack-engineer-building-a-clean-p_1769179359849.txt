@@ -1,0 +1,201 @@
+You are a senior full-stack engineer building a clean, production-ready MVP web application.
+
+App Concept
+
+Build a mobile-first AI kitchen sous-chef web app that helps users:
+
+Generate dinner ideas
+
+Plan weekly meals
+
+Generate recipes
+
+Track ingredients conversationally
+
+Produce smart shopping lists
+
+The AI should feel like a helpful assistant, not a form-filling tool.
+
+Core Features (MVP only)
+1. Authentication
+
+Simple user login (email + password)
+
+Each user has isolated data
+
+2. Conversational Interface (Primary UI)
+
+Chat-style interface similar to iMessage
+
+This is the main interaction method
+
+Users can say things like:
+
+“I don’t know what to cook tonight”
+
+“I have chicken, rice, and broccoli”
+
+“Plan dinners for the week”
+
+The AI responds conversationally and stores useful memory
+
+3. Ingredient Memory (Soft Inventory)
+
+No manual inventory screen
+
+Ingredients are inferred from conversation
+
+Store ingredients with:
+
+name
+
+approximate quantity (optional)
+
+confidence score
+
+last mentioned timestamp
+
+Ingredients decay over time unless reaffirmed
+
+AI prioritizes known ingredients when suggesting meals
+
+4. Dinner Idea Generator
+
+Generates dinner ideas based on:
+
+ingredients on hand
+
+time constraints
+
+family-friendly defaults
+
+Allows follow-ups like:
+
+“Something faster”
+
+“No pasta”
+
+“Kid-friendly”
+
+5. Weekly Meal Planner
+
+AI can generate a 7-day dinner plan
+
+Store the plan in structured form:
+
+day → meal → recipe reference
+
+Users can modify individual days via chat
+
+6. Recipe Generator
+
+Recipes include:
+
+Ingredients list
+
+Simple step-by-step instructions
+
+Estimated cook time
+
+Recipes can reference existing ingredient memory
+
+7. Shopping List Generator
+
+Generate shopping lists based on:
+
+weekly meal plan
+
+missing ingredients
+
+Output grouped lists (produce, meat, pantry)
+
+Editable list (checkboxes)
+
+UI / UX Requirements
+
+Mobile-first
+
+Clean, minimal design
+
+Dark-mode friendly
+
+Bottom-anchored chat input
+
+Simple navigation:
+
+Chat
+
+Weekly Plan
+
+Shopping List
+
+No cluttered dashboards
+
+Use modern UI components and spacing
+
+Backend Architecture
+Tech Stack (recommended)
+
+Frontend: React (or Next.js)
+
+Backend: Node.js with Express or Next API routes
+
+Database: SQLite or Postgres
+
+AI: OpenAI API (chat + function calling)
+
+Data Models (simplified)
+
+User
+
+ConversationMessage
+
+IngredientMemory
+
+MealPlan
+
+Recipe
+
+AI Strategy
+
+Use system prompts to define the AI as a kitchen sous-chef
+
+Use function calls for:
+
+updating ingredient memory
+
+creating meal plans
+
+generating shopping lists
+
+Keep AI logic deterministic where possible
+
+Scope Rules
+
+Do NOT build:
+
+barcode scanning
+
+nutrition tracking
+
+calorie counting
+
+grocery store integrations
+
+Focus on clarity, speed, and usability
+
+Goal
+
+Deliver a polished MVP that feels delightful, fast, and useful for daily dinner decisions—optimized for real humans with phones, not power users.
+
+Final mentor note (important)
+
+This idea only wins if:
+
+The chat feels trustworthy
+
+The app never argues with the user about what’s in their fridge
+
+It feels faster than thinking
+
+If you try to make it “smart” instead of helpful, it will suck.
