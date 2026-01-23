@@ -47,6 +47,7 @@ export interface IStorage {
   getShoppingListByWeek(userId: string, weekStartDate: string): Promise<(ShoppingList & { items: ShoppingListItem[] }) | null>;
   getAllShoppingLists(userId: string): Promise<ShoppingList[]>;
   createShoppingList(data: InsertShoppingList): Promise<ShoppingList>;
+  createShoppingListForWeek(data: InsertShoppingList): Promise<ShoppingList>;
   addShoppingListItem(data: InsertShoppingListItem): Promise<ShoppingListItem>;
   updateShoppingListItem(id: number, data: Partial<InsertShoppingListItem>): Promise<ShoppingListItem>;
   deleteShoppingListItem(id: number): Promise<void>;
@@ -291,7 +292,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createShoppingList(data: InsertShoppingList): Promise<ShoppingList> {
-    await this.clearShoppingList(data.userId);
+    // For backward compatibility, delete existing list for the same week if weekStartDate is provided
+    if (data.weekStartDate) {
+      const existing = await this.getShoppingListByWeek(data.userId, data.weekStartDate);
+      if (existing) {
+        await db.delete(shoppingListItems).where(eq(shoppingListItems.shoppingListId, existing.id));
+        await db.delete(shoppingLists).where(eq(shoppingLists.id, existing.id));
+      }
+    }
+    const [list] = await db.insert(shoppingLists).values(data).returning();
+    return list;
+  }
+
+  async createShoppingListForWeek(data: InsertShoppingList): Promise<ShoppingList> {
+    // Delete only the list for this specific week if it exists
+    if (data.weekStartDate) {
+      const existing = await this.getShoppingListByWeek(data.userId, data.weekStartDate);
+      if (existing) {
+        await db.delete(shoppingListItems).where(eq(shoppingListItems.shoppingListId, existing.id));
+        await db.delete(shoppingLists).where(eq(shoppingLists.id, existing.id));
+      }
+    }
     const [list] = await db.insert(shoppingLists).values(data).returning();
     return list;
   }
