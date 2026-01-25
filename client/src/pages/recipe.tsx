@@ -408,30 +408,7 @@ export default function Recipe() {
             )}
             {recipeContent && (
               <div className="prose prose-sm dark:prose-invert max-w-none" data-testid="recipe-content">
-                {recipeContent.split('\n').map((line, i) => {
-                  if (line.startsWith('# ')) {
-                    return <h1 key={i} className="text-xl font-bold mt-0 mb-2">{line.slice(2)}</h1>;
-                  }
-                  if (line.startsWith('## ')) {
-                    return <h2 key={i} className="text-lg font-semibold mt-4 mb-2">{line.slice(3)}</h2>;
-                  }
-                  if (line.startsWith('### ')) {
-                    return <h3 key={i} className="text-base font-semibold mt-3 mb-1">{line.slice(4)}</h3>;
-                  }
-                  if (line.startsWith('- ')) {
-                    return <li key={i} className="ml-4">{line.slice(2)}</li>;
-                  }
-                  if (line.match(/^\d+\./)) {
-                    return <li key={i} className="ml-4 list-decimal">{line.replace(/^\d+\.\s*/, '')}</li>;
-                  }
-                  if (line.startsWith('**') && line.endsWith('**')) {
-                    return <p key={i} className="font-semibold my-1">{line.slice(2, -2)}</p>;
-                  }
-                  if (line.trim() === '') {
-                    return <br key={i} />;
-                  }
-                  return <p key={i} className="my-1">{line}</p>;
-                })}
+                <RecipeContent content={recipeContent} />
               </div>
             )}
           </Card>
@@ -466,4 +443,72 @@ export default function Recipe() {
       </div>
     </div>
   );
+}
+
+function RecipeContent({ content }: { content: string }) {
+  const lines = content.split('\n');
+  const elements: JSX.Element[] = [];
+  let currentList: { type: 'ol' | 'ul'; items: string[] } | null = null;
+  let listKey = 0;
+  
+  const flushList = () => {
+    if (currentList) {
+      if (currentList.type === 'ol') {
+        elements.push(
+          <ol key={`list-${listKey++}`} className="list-decimal ml-6 my-2 space-y-1">
+            {currentList.items.map((item, idx) => (
+              <li key={idx}>{item}</li>
+            ))}
+          </ol>
+        );
+      } else {
+        elements.push(
+          <ul key={`list-${listKey++}`} className="list-disc ml-6 my-2 space-y-1">
+            {currentList.items.map((item, idx) => (
+              <li key={idx}>{item}</li>
+            ))}
+          </ul>
+        );
+      }
+      currentList = null;
+    }
+  };
+  
+  lines.forEach((line, i) => {
+    if (line.startsWith('# ')) {
+      flushList();
+      elements.push(<h1 key={i} className="text-xl font-bold mt-0 mb-2">{line.slice(2)}</h1>);
+    } else if (line.startsWith('## ')) {
+      flushList();
+      elements.push(<h2 key={i} className="text-lg font-semibold mt-4 mb-2">{line.slice(3)}</h2>);
+    } else if (line.startsWith('### ')) {
+      flushList();
+      elements.push(<h3 key={i} className="text-base font-semibold mt-3 mb-1">{line.slice(4)}</h3>);
+    } else if (line.startsWith('- ')) {
+      if (currentList?.type !== 'ul') {
+        flushList();
+        currentList = { type: 'ul', items: [] };
+      }
+      currentList.items.push(line.slice(2));
+    } else if (line.match(/^\d+\./)) {
+      if (currentList?.type !== 'ol') {
+        flushList();
+        currentList = { type: 'ol', items: [] };
+      }
+      currentList.items.push(line.replace(/^\d+\.\s*/, ''));
+    } else if (line.startsWith('**') && line.endsWith('**')) {
+      flushList();
+      elements.push(<p key={i} className="font-semibold my-1">{line.slice(2, -2)}</p>);
+    } else if (line.trim() === '') {
+      flushList();
+      elements.push(<br key={i} />);
+    } else {
+      flushList();
+      elements.push(<p key={i} className="my-1">{line}</p>);
+    }
+  });
+  
+  flushList();
+  
+  return <>{elements}</>;
 }

@@ -7,11 +7,21 @@ interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  externalMessage?: string;
+  onExternalMessageClear?: () => void;
 }
 
-export function ChatInput({ onSend, disabled, placeholder = "What's for dinner?" }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, placeholder = "What's for dinner?", externalMessage, onExternalMessageClear }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (externalMessage) {
+      setMessage(externalMessage);
+      onExternalMessageClear?.();
+      textareaRef.current?.focus();
+    }
+  }, [externalMessage, onExternalMessageClear]);
 
   useEffect(() => {
     if (textareaRef.current) {

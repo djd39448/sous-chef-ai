@@ -270,8 +270,15 @@ export async function* streamChatCompletion(
         yield { type: "tool_result" as const, name: tc.name, result };
       } catch (e) {
         console.error("Tool call error:", e);
+        yield { type: "error" as const, message: "Error processing request" };
       }
     }
+  }
+
+  // If no content was generated but tool calls were made, add a confirmation
+  if (!fullContent && toolCalls.length > 0) {
+    fullContent = "Done! I've updated that for you.";
+    yield { type: "content" as const, content: fullContent };
   }
 
   yield { type: "done" as const, fullContent };

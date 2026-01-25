@@ -28,6 +28,7 @@ export default function Chat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
+  const [pendingMessage, setPendingMessage] = useState("");
 
   const conversationQueryKey = activeConversationId 
     ? ["/api/kitchen/conversation", activeConversationId]
@@ -114,6 +115,10 @@ export default function Chat() {
               fullContent += data.content;
               setStreamingContent(fullContent);
             }
+            if (data.error) {
+              console.error("Stream error:", data.error);
+              setIsStreaming(false);
+            }
             if (data.done) {
               setIsStreaming(false);
             }
@@ -129,9 +134,10 @@ export default function Chat() {
       queryClient.invalidateQueries({ queryKey: ["/api/kitchen/conversations"] });
       setStreamingContent("");
     },
-    onError: () => {
+    onError: (error) => {
       setIsStreaming(false);
       setStreamingContent("");
+      console.error("Chat error:", error);
     },
   });
 
@@ -213,7 +219,7 @@ export default function Chat() {
             {isLoading ? (
               <ChatSkeleton />
             ) : showWelcome ? (
-              <WelcomeMessage />
+              <WelcomeMessage onSuggestionClick={setPendingMessage} />
             ) : (
               <>
                 {messages.map((message) => (
@@ -243,6 +249,8 @@ export default function Chat() {
           onSend={(msg) => sendMessageMutation.mutate(msg)}
           disabled={isStreaming}
           placeholder={showWelcome ? "What's for dinner tonight?" : "Ask me anything..."}
+          externalMessage={pendingMessage}
+          onExternalMessageClear={() => setPendingMessage("")}
         />
       </div>
 
@@ -251,7 +259,7 @@ export default function Chat() {
   );
 }
 
-function WelcomeMessage() {
+function WelcomeMessage({ onSuggestionClick }: { onSuggestionClick: (message: string) => void }) {
   const suggestions = [
     "I don't know what to cook tonight",
     "I have chicken, rice, and broccoli",
@@ -277,14 +285,7 @@ function WelcomeMessage() {
           <button
             key={i}
             className="w-full text-left px-4 py-3 rounded-lg bg-card border border-card-border text-sm hover-elevate transition-colors"
-            onClick={() => {
-              const input = document.querySelector<HTMLTextAreaElement>('[data-testid="input-chat-message"]');
-              if (input) {
-                input.value = suggestion;
-                input.dispatchEvent(new Event("input", { bubbles: true }));
-                input.focus();
-              }
-            }}
+            onClick={() => onSuggestionClick(suggestion)}
             data-testid={`suggestion-${i}`}
           >
             "{suggestion}"
