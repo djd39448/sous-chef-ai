@@ -44,23 +44,23 @@ export default function Shopping() {
   const [, navigate] = useLocation();
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
-  const weekParam = searchParams.get("week");
+  const listParam = searchParams.get("list");
   
-  const [selectedWeek, setSelectedWeek] = useState<string | null>(weekParam);
+  const [selectedListId, setSelectedListId] = useState<string | null>(listParam);
 
   const { data: allLists, isLoading: listsLoading } = useQuery<ShoppingListSummary[]>({
     queryKey: ["/api/kitchen/shopping-lists"],
   });
 
   const { data: selectedList, isLoading: listLoading } = useQuery<ShoppingList | null>({
-    queryKey: ["/api/kitchen/shopping-list", selectedWeek],
+    queryKey: ["/api/kitchen/shopping-list", selectedListId],
     queryFn: async () => {
-      if (!selectedWeek) return null;
-      const res = await fetch(`/api/kitchen/shopping-list/${selectedWeek}`, { credentials: "include" });
+      if (!selectedListId) return null;
+      const res = await fetch(`/api/kitchen/shopping-list/${selectedListId}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: !!selectedWeek,
+    enabled: !!selectedListId,
   });
 
   const toggleItemMutation = useMutation({
@@ -68,7 +68,7 @@ export default function Shopping() {
       return apiRequest("PATCH", `/api/kitchen/shopping-item/${id}`, { checked });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/shopping-list", selectedWeek] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/shopping-list", selectedListId] });
     },
   });
 
@@ -77,7 +77,7 @@ export default function Shopping() {
       return apiRequest("DELETE", "/api/kitchen/shopping-items/checked");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/shopping-list", selectedWeek] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/shopping-list", selectedListId] });
       toast({
         title: "Checked items cleared",
         description: "Your list has been updated.",
@@ -86,13 +86,14 @@ export default function Shopping() {
   });
 
   const handleBack = () => {
-    setSelectedWeek(null);
+    setSelectedListId(null);
     navigate("/shopping");
   };
 
-  const handleSelectWeek = (weekStartDate: string) => {
-    setSelectedWeek(weekStartDate);
-    navigate(`/shopping?week=${weekStartDate}`);
+  const handleSelectList = (list: ShoppingListSummary) => {
+    const identifier = list.weekStartDate || String(list.id);
+    setSelectedListId(identifier);
+    navigate(`/shopping?list=${identifier}`);
   };
 
   const items = selectedList?.items || [];
@@ -124,7 +125,7 @@ export default function Shopping() {
     toggleItemMutation.mutate({ id, checked });
   };
 
-  if (selectedWeek) {
+  if (selectedListId) {
     return (
       <div className="flex flex-col h-screen bg-background">
         <header className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10">
@@ -141,7 +142,9 @@ export default function Shopping() {
               {selectedList?.name || "Shopping List"}
             </h1>
             <p className="text-xs text-muted-foreground">
-              Week of {format(parseISO(selectedWeek), "MMM d, yyyy")}
+              {selectedList?.weekStartDate 
+                ? `Week of ${format(parseISO(selectedList.weekStartDate), "MMM d, yyyy")}`
+                : "General shopping"}
             </p>
           </div>
           {hasCheckedItems && (
@@ -232,7 +235,7 @@ export default function Shopping() {
                   <Card
                     key={list.id}
                     className="p-4 cursor-pointer hover-elevate"
-                    onClick={() => list.weekStartDate && handleSelectWeek(list.weekStartDate)}
+                    onClick={() => handleSelectList(list)}
                     data-testid={`shopping-list-${list.id}`}
                   >
                     <div className="flex items-center gap-3">

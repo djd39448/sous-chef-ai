@@ -45,6 +45,7 @@ export interface IStorage {
   // Shopping Lists
   getShoppingList(userId: string): Promise<(ShoppingList & { items: ShoppingListItem[] }) | null>;
   getShoppingListByWeek(userId: string, weekStartDate: string): Promise<(ShoppingList & { items: ShoppingListItem[] }) | null>;
+  getShoppingListById(userId: string, listId: number): Promise<(ShoppingList & { items: ShoppingListItem[] }) | null>;
   getAllShoppingLists(userId: string): Promise<ShoppingList[]>;
   createShoppingList(data: InsertShoppingList): Promise<ShoppingList>;
   addShoppingListItem(data: InsertShoppingListItem): Promise<ShoppingListItem>;
@@ -286,6 +287,21 @@ export class DatabaseStorage implements IStorage {
     return { ...list, items };
   }
 
+  async getShoppingListById(userId: string, listId: number): Promise<(ShoppingList & { items: ShoppingListItem[] }) | null> {
+    const [list] = await db.select().from(shoppingLists)
+      .where(and(
+        eq(shoppingLists.userId, userId),
+        eq(shoppingLists.id, listId)
+      ));
+
+    if (!list) return null;
+
+    const items = await db.select().from(shoppingListItems)
+      .where(eq(shoppingListItems.shoppingListId, list.id));
+
+    return { ...list, items };
+  }
+
   async getAllShoppingLists(userId: string): Promise<ShoppingList[]> {
     return db.select().from(shoppingLists)
       .where(eq(shoppingLists.userId, userId))
@@ -293,7 +309,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createShoppingList(data: InsertShoppingList): Promise<ShoppingList> {
-    await this.clearShoppingList(data.userId);
+    // If weekStartDate is provided, delete existing list for that week only
+    if (data.weekStartDate) {
+      const existingList = await this.getShoppingListByWeek(data.userId, data.weekStartDate);
+      if (existingList) {
+        await db.delete(shoppingListItems).where(eq(shoppingListItems.shoppingListId, existingList.id));
+        await db.delete(shoppingLists).where(eq(shoppingLists.id, existingList.id));
+      }
+    }
     const [list] = await db.insert(shoppingLists).values(data).returning();
     return list;
   }

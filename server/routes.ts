@@ -57,7 +57,7 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const conversationId = parseInt(req.params.id);
+      const conversationId = parseInt(req.params.id as string);
       if (isNaN(conversationId)) return res.status(400).json({ error: "Invalid conversation ID" });
 
       const conversation = await storage.getConversationById(conversationId, userId);
@@ -714,13 +714,21 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
     }
   });
 
-  app.get("/api/kitchen/shopping-list/:weekStartDate", isAuthenticated, async (req: Request, res: Response) => {
+  app.get("/api/kitchen/shopping-list/:identifier", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = (req.user as any)?.claims?.sub;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const weekStartDate = req.params.weekStartDate as string;
-      const shoppingList = await storage.getShoppingListByWeek(userId, weekStartDate);
+      const identifier = req.params.identifier as string;
+      const listId = parseInt(identifier);
+      let shoppingList;
+      
+      if (!isNaN(listId) && identifier.match(/^\d+$/)) {
+        shoppingList = await storage.getShoppingListById(userId, listId);
+      } else {
+        shoppingList = await storage.getShoppingListByWeek(userId, identifier);
+      }
+      
       res.json(shoppingList);
     } catch (error) {
       console.error("Error fetching shopping list:", error);
@@ -781,6 +789,8 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
       const list = await storage.createShoppingList({
         userId,
         name: "Weekly Shopping",
+        weekStartDate: mealPlan?.weekStartDate || null,
+        mealPlanId: mealPlan?.id || null,
       });
 
       for (const item of items) {
