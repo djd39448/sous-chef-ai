@@ -54,19 +54,11 @@ export function ChatMessage({ role, content, user, isStreaming }: ChatMessagePro
 
 export function TypingIndicator() {
   return (
-    <div className="flex gap-3 items-end" data-testid="typing-indicator">
-      <Avatar className="h-8 w-8 shrink-0">
-        <AvatarFallback className="bg-primary text-primary-foreground">
-          <ChefHat className="h-4 w-4" />
-        </AvatarFallback>
-      </Avatar>
-      <div className="chat-bubble-assistant px-4 py-3">
-        <div className="flex gap-1">
-          <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "300ms" }} />
-        </div>
+    <div className="flex gap-3 items-center" data-testid="typing-indicator">
+      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+        <ChefHat className="h-5 w-5 text-primary animate-spin" />
       </div>
+      <span className="text-sm text-muted-foreground">Thinking...</span>
     </div>
   );
 }
