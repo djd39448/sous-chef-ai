@@ -9,10 +9,10 @@ import { ChatMessage, TypingIndicator } from "@/components/chat-message";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { ChefHat, Plus, History, MessageSquare } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { ChefHat, Plus, MessageSquare, PanelLeftClose, PanelLeft } from "lucide-react";
 import type { KitchenMessage, KitchenConversation } from "@shared/schema";
-import { format, parseISO } from "date-fns";
+import { parseISO, isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
 
 interface ConversationWithMessages {
   id: number;
@@ -26,7 +26,7 @@ export default function Chat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
   const [pendingMessage, setPendingMessage] = useState("");
 
@@ -64,13 +64,13 @@ export default function Chat() {
     onSuccess: (newConversation) => {
       setActiveConversationId(newConversation.id);
       queryClient.invalidateQueries({ queryKey: ["/api/kitchen/conversations"] });
-      setSheetOpen(false);
+      setSidebarOpen(false);
     },
   });
 
   const selectConversation = (convId: number) => {
     setActiveConversationId(convId);
-    setSheetOpen(false);
+    setSidebarOpen(false);
   };
 
   const sendMessageMutation = useMutation({
@@ -150,145 +150,206 @@ export default function Chat() {
   const messages = conversation?.messages || [];
   const showWelcome = messages.length === 0 && !isStreaming;
 
-  return (
-    <div className="flex flex-col h-screen bg-background">
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10">
-        <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-          <ChefHat className="h-5 w-5 text-primary-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-semibold" data-testid="chat-title">Sous Chef</h1>
-          <p className="text-xs text-muted-foreground truncate">
-            {conversation?.title || "Your kitchen assistant"}
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => newChatMutation.mutate()}
-          disabled={newChatMutation.isPending}
-          data-testid="button-new-chat"
-        >
-          <Plus className="h-5 w-5" />
-        </Button>
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" data-testid="button-history">
-              <History className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent>
-            <SheetHeader>
-              <SheetTitle>Past Conversations</SheetTitle>
-            </SheetHeader>
-            <div className="mt-4 space-y-2">
-              {allConversations && allConversations.length > 0 ? (
-                allConversations.map((conv) => (
-                  <button
-                    key={conv.id}
-                    className={`w-full text-left p-3 rounded-lg cursor-pointer hover-elevate ${
-                      conv.id === conversation?.id ? 'bg-primary/10' : 'bg-muted/50'
-                    }`}
-                    onClick={() => selectConversation(conv.id)}
-                    data-testid={`conversation-${conv.id}`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{conv.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(parseISO(conv.updatedAt as unknown as string), "MMM d, yyyy 'at' h:mm a")}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <p className="text-muted-foreground text-sm text-center py-8">
-                  No past conversations yet
-                </p>
-              )}
-            </div>
-          </SheetContent>
-        </Sheet>
-      </header>
+  const groupedConversations = groupConversationsByDate(allConversations || []);
 
-      <div className="flex-1 overflow-hidden pb-16">
-        <ScrollArea className="h-full" ref={scrollRef}>
-          <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-            {isLoading ? (
-              <ChatSkeleton />
-            ) : showWelcome ? (
-              <WelcomeMessage onSuggestionClick={setPendingMessage} />
-            ) : (
-              <>
-                {messages.map((message) => (
-                  <ChatMessage
-                    key={message.id}
-                    role={message.role as "user" | "assistant"}
-                    content={message.content}
-                    user={user}
-                  />
-                ))}
-                {isStreaming && streamingContent && (
-                  <ChatMessage
-                    role="assistant"
-                    content={streamingContent}
-                    isStreaming
-                  />
-                )}
-                {isStreaming && !streamingContent && <TypingIndicator />}
-              </>
+  return (
+    <div className="flex h-screen bg-background">
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden" 
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      
+      <aside className={cn(
+        "fixed md:relative z-40 h-full w-72 bg-muted/50 border-r border-border flex flex-col transition-transform duration-200",
+        sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
+        <div className="p-3 border-b border-border">
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-2"
+            onClick={() => newChatMutation.mutate()}
+            disabled={newChatMutation.isPending}
+            data-testid="button-new-chat"
+          >
+            <Plus className="h-4 w-4" />
+            New chat
+          </Button>
+        </div>
+        
+        <ScrollArea className="flex-1">
+          <div className="p-2">
+            {Object.entries(groupedConversations).map(([group, convs]) => (
+              convs.length > 0 && (
+                <div key={group} className="mb-4">
+                  <p className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {group}
+                  </p>
+                  {convs.map((conv) => (
+                    <button
+                      key={conv.id}
+                      className={cn(
+                        "w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 hover-elevate transition-colors",
+                        conv.id === conversation?.id 
+                          ? "bg-background border border-border" 
+                          : "hover:bg-background/50"
+                      )}
+                      onClick={() => selectConversation(conv.id)}
+                      data-testid={`conversation-${conv.id}`}
+                    >
+                      <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{conv.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )
+            ))}
+            {(!allConversations || allConversations.length === 0) && (
+              <p className="text-center text-muted-foreground text-sm py-8">
+                No conversations yet
+              </p>
             )}
           </div>
         </ScrollArea>
-      </div>
 
-      <div className="pb-16">
-        <ChatInput
-          onSend={(msg) => sendMessageMutation.mutate(msg)}
-          disabled={isStreaming}
-          placeholder={showWelcome ? "What's for dinner tonight?" : "Ask me anything..."}
-          externalMessage={pendingMessage}
-          onExternalMessageClear={() => setPendingMessage("")}
-        />
-      </div>
+        <div className="p-3 border-t border-border md:hidden">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <PanelLeftClose className="h-4 w-4" />
+            Close sidebar
+          </Button>
+        </div>
+      </aside>
+
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="flex items-center gap-2 px-4 py-3 border-b border-border bg-background/95 backdrop-blur-sm">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setSidebarOpen(true)}
+            data-testid="button-toggle-sidebar"
+          >
+            <PanelLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+              <ChefHat className="h-4 w-4 text-primary-foreground" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold truncate" data-testid="chat-title">
+                {conversation?.title || "New chat"}
+              </h1>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-hidden pb-16">
+          <ScrollArea className="h-full" ref={scrollRef}>
+            <div className="max-w-3xl mx-auto px-4 py-6">
+              {isLoading ? (
+                <ChatSkeleton />
+              ) : showWelcome ? (
+                <WelcomeMessage onSuggestionClick={setPendingMessage} />
+              ) : (
+                <div className="space-y-6">
+                  {messages.map((message) => (
+                    <ChatMessage
+                      key={message.id}
+                      role={message.role as "user" | "assistant"}
+                      content={message.content}
+                      user={user}
+                    />
+                  ))}
+                  {isStreaming && streamingContent && (
+                    <ChatMessage
+                      role="assistant"
+                      content={streamingContent}
+                      isStreaming
+                    />
+                  )}
+                  {isStreaming && !streamingContent && <TypingIndicator />}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+
+        <div className="pb-16">
+          <ChatInput
+            onSend={(msg) => sendMessageMutation.mutate(msg)}
+            disabled={isStreaming}
+            placeholder={showWelcome ? "Message Sous Chef..." : "Message..."}
+            externalMessage={pendingMessage}
+            onExternalMessageClear={() => setPendingMessage("")}
+          />
+        </div>
+      </main>
 
       <BottomNav />
     </div>
   );
 }
 
+function groupConversationsByDate(conversations: KitchenConversation[]) {
+  const groups: Record<string, KitchenConversation[]> = {
+    "Today": [],
+    "Yesterday": [],
+    "This Week": [],
+    "This Month": [],
+    "Older": [],
+  };
+
+  for (const conv of conversations) {
+    const date = parseISO(conv.updatedAt as unknown as string);
+    if (isToday(date)) {
+      groups["Today"].push(conv);
+    } else if (isYesterday(date)) {
+      groups["Yesterday"].push(conv);
+    } else if (isThisWeek(date)) {
+      groups["This Week"].push(conv);
+    } else if (isThisMonth(date)) {
+      groups["This Month"].push(conv);
+    } else {
+      groups["Older"].push(conv);
+    }
+  }
+
+  return groups;
+}
+
 function WelcomeMessage({ onSuggestionClick }: { onSuggestionClick: (message: string) => void }) {
   const suggestions = [
-    "I don't know what to cook tonight",
-    "I have chicken, rice, and broccoli",
+    "What can I make with what's in my fridge?",
     "Plan my dinners for the week",
-    "Give me something quick and easy",
+    "Something quick and easy tonight",
+    "I want to try something new",
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center py-8 text-center">
-      <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-        <ChefHat className="h-8 w-8 text-primary" />
+    <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
+      <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
+        <ChefHat className="h-10 w-10 text-primary" />
       </div>
-      <h2 className="text-xl font-semibold mb-2">Hey! I'm your sous chef.</h2>
-      <p className="text-muted-foreground mb-6 max-w-sm">
-        Tell me what you have, what you're craving, or ask me to plan your week. 
-        I'm here to help with dinner decisions.
+      <h2 className="text-2xl font-semibold mb-2">How can I help you today?</h2>
+      <p className="text-muted-foreground mb-8 max-w-md">
+        I'm your AI kitchen assistant. Tell me what you have, what you're craving, or ask me to plan your meals.
       </p>
-      <div className="space-y-2 w-full max-w-sm">
-        <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-3">
-          Try saying...
-        </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl">
         {suggestions.map((suggestion, i) => (
           <button
             key={i}
-            className="w-full text-left px-4 py-3 rounded-lg bg-card border border-card-border text-sm hover-elevate transition-colors"
+            className="text-left p-4 rounded-xl bg-card border border-card-border hover-elevate transition-all"
             onClick={() => onSuggestionClick(suggestion)}
             data-testid={`suggestion-${i}`}
           >
-            "{suggestion}"
+            <MessageSquare className="h-4 w-4 text-muted-foreground mb-2" />
+            <span className="text-sm">{suggestion}</span>
           </button>
         ))}
       </div>
@@ -298,14 +359,14 @@ function WelcomeMessage({ onSuggestionClick }: { onSuggestionClick: (message: st
 
 function ChatSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="flex gap-3 items-end">
-        <Skeleton className="h-8 w-8 rounded-full" />
-        <Skeleton className="h-16 w-64 rounded-2xl rounded-bl-sm" />
+    <div className="space-y-6">
+      <div className="flex gap-3">
+        <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+        <Skeleton className="h-20 flex-1 max-w-md rounded-xl" />
       </div>
-      <div className="flex gap-3 items-end flex-row-reverse">
-        <Skeleton className="h-8 w-8 rounded-full" />
-        <Skeleton className="h-12 w-48 rounded-2xl rounded-br-sm" />
+      <div className="flex gap-3 justify-end">
+        <Skeleton className="h-12 w-48 rounded-xl" />
+        <Skeleton className="h-8 w-8 rounded-full shrink-0" />
       </div>
     </div>
   );
