@@ -82,6 +82,7 @@ Preferred communication style: Simple, everyday language.
 - **Current Week getMealPlan**: getMealPlan() now returns the current week's plan (not most recent created)
 - **Recipe Auto-Save to Cookbook**: Generated recipes are automatically saved to the user's cookbook (avoiding duplicates)
 - **Cookbook-First Recipe Loading**: Recipe generation checks cookbook first and uses existing recipes for consistency before creating new ones
+- **Editable Cookbook Recipes**: Individual cookbook recipes can be opened and edited via /cookbook/:id route
 
 ### Authentication Flow
 - Replit Auth handles user authentication via OIDC

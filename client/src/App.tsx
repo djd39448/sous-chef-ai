@@ -13,6 +13,7 @@ import MealPlan from "@/pages/meal-plan";
 import Shopping from "@/pages/shopping";
 import Recipe from "@/pages/recipe";
 import Cookbook from "@/pages/cookbook";
+import CookbookRecipe from "@/pages/cookbook-recipe";
 import Calendar from "@/pages/calendar";
 
 function AuthenticatedRoutes() {
@@ -22,6 +23,7 @@ function AuthenticatedRoutes() {
       <Route path="/plan" component={MealPlan} />
       <Route path="/recipe/:dayId" component={Recipe} />
       <Route path="/cookbook" component={Cookbook} />
+      <Route path="/cookbook/:id" component={CookbookRecipe} />
       <Route path="/calendar" component={Calendar} />
       <Route path="/shopping" component={Shopping} />
       <Route component={NotFound} />

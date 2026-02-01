@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { BottomNav } from "@/components/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChefHat, Trash2, RefreshCw, BookOpen, Search, X, Camera } from "lucide-react";
+import { Trash2, BookOpen, Search, X, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
@@ -22,9 +22,7 @@ interface CookbookRecipe {
 export default function Cookbook() {
   useDocumentTitle("My Cookbook - Sous Chef AI");
   const { toast } = useToast();
-  const [expandedRecipe, setExpandedRecipe] = useState<number | null>(null);
-  const [loadingImage, setLoadingImage] = useState<number | null>(null);
-  const [recipeImages, setRecipeImages] = useState<Record<number, string>>({});
+  const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: recipes, isLoading } = useQuery<CookbookRecipe[]>({
@@ -50,33 +48,6 @@ export default function Cookbook() {
       });
     },
   });
-
-  const loadImage = async (recipe: CookbookRecipe) => {
-    if (!recipe.imagePrompt || recipeImages[recipe.id]) return;
-    
-    setLoadingImage(recipe.id);
-    try {
-      const res = await apiRequest("POST", "/api/kitchen/regenerate-image", { 
-        prompt: recipe.imagePrompt 
-      });
-      const data = await res.json();
-      if (data.imageUrl) {
-        setRecipeImages(prev => ({ ...prev, [recipe.id]: data.imageUrl }));
-      }
-    } catch (error) {
-      console.error("Failed to load image:", error);
-    } finally {
-      setLoadingImage(null);
-    }
-  };
-
-  const toggleExpand = (recipe: CookbookRecipe) => {
-    if (expandedRecipe === recipe.id) {
-      setExpandedRecipe(null);
-    } else {
-      setExpandedRecipe(recipe.id);
-    }
-  };
 
   return (
     <div className="flex flex-col h-screen-safe bg-background">
@@ -117,10 +88,10 @@ export default function Cookbook() {
         )}
       </header>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-4 pb-24">
           {isLoading ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <Card key={i} className="p-4">
                   <Skeleton className="h-6 w-48 mb-2" />
@@ -129,93 +100,39 @@ export default function Cookbook() {
               ))}
             </div>
           ) : filteredRecipes && filteredRecipes.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {filteredRecipes.map((recipe) => (
-                <Card key={recipe.id} className="overflow-hidden">
-                  <div 
-                    className="p-4 cursor-pointer hover-elevate"
-                    onClick={() => toggleExpand(recipe)}
-                    data-testid={`cookbook-recipe-${recipe.id}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
+                <Card 
+                  key={recipe.id} 
+                  className="overflow-hidden hover-elevate cursor-pointer"
+                  onClick={() => navigate(`/cookbook/${recipe.id}`)}
+                  data-testid={`cookbook-recipe-${recipe.id}`}
+                >
+                  <div className="p-4">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold truncate">{recipe.title}</h3>
                         <p className="text-xs text-muted-foreground">
                           Saved {new Date(recipe.createdAt).toLocaleDateString()}
                         </p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteMutation.mutate(recipe.id);
-                        }}
-                        disabled={deleteMutation.isPending}
-                        data-testid={`delete-recipe-${recipe.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {expandedRecipe === recipe.id && (
-                    <div className="border-t border-border">
-                      {recipe.imagePrompt && (
-                        <div className="aspect-video bg-muted relative">
-                          {loadingImage === recipe.id ? (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-                            </div>
-                          ) : recipeImages[recipe.id] ? (
-                            <img 
-                              src={recipeImages[recipe.id]} 
-                              alt={recipe.title}
-                              className="w-full h-full object-cover"
-                              data-testid={`recipe-image-${recipe.id}`}
-                            />
-                          ) : (
-                            <button
-                              onClick={() => loadImage(recipe)}
-                              className="absolute inset-0 flex items-center justify-center text-muted-foreground hover-elevate cursor-pointer w-full h-full"
-                              data-testid={`generate-image-${recipe.id}`}
-                            >
-                              <div className="flex flex-col items-center gap-2">
-                                <Camera className="h-8 w-8" />
-                                <span className="text-sm font-medium">Tap to generate photo</span>
-                              </div>
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      <div className="p-4 prose prose-sm dark:prose-invert max-w-none">
-                        {recipe.content.split('\n').map((line, i) => {
-                          if (line.startsWith('# ')) {
-                            return <h1 key={i} className="text-xl font-bold mt-0 mb-2">{line.slice(2)}</h1>;
-                          }
-                          if (line.startsWith('## ')) {
-                            return <h2 key={i} className="text-lg font-semibold mt-4 mb-2">{line.slice(3)}</h2>;
-                          }
-                          if (line.startsWith('### ')) {
-                            return <h3 key={i} className="text-base font-semibold mt-3 mb-1">{line.slice(4)}</h3>;
-                          }
-                          if (line.startsWith('- ')) {
-                            return <li key={i} className="ml-4">{line.slice(2)}</li>;
-                          }
-                          if (line.match(/^\d+\./)) {
-                            return <li key={i} className="ml-4 list-decimal">{line.replace(/^\d+\.\s*/, '')}</li>;
-                          }
-                          if (line.startsWith('**') && line.endsWith('**')) {
-                            return <p key={i} className="font-semibold my-1">{line.slice(2, -2)}</p>;
-                          }
-                          if (line.trim() === '') {
-                            return <br key={i} />;
-                          }
-                          return <p key={i} className="my-1">{line}</p>;
-                        })}
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteMutation.mutate(recipe.id);
+                          }}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`delete-recipe-${recipe.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
                       </div>
                     </div>
-                  )}
+                  </div>
                 </Card>
               ))}
             </div>
@@ -241,7 +158,7 @@ export default function Cookbook() {
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       <BottomNav />
     </div>

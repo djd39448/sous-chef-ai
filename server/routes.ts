@@ -954,6 +954,41 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
     }
   });
 
+  app.put("/api/kitchen/cookbook/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const id = parseInt(req.params.id as string, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid recipe ID" });
+
+      const recipe = await storage.getCookbookRecipe(id);
+      if (!recipe) return res.status(404).json({ error: "Recipe not found" });
+      if (recipe.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+
+      const { title, content, imagePrompt } = req.body;
+      
+      // Server-side validation: ensure title and content are non-empty if provided
+      if (title !== undefined && (typeof title !== 'string' || !title.trim())) {
+        return res.status(400).json({ error: "Title cannot be empty" });
+      }
+      if (content !== undefined && (typeof content !== 'string' || !content.trim())) {
+        return res.status(400).json({ error: "Content cannot be empty" });
+      }
+      
+      const updateData: Partial<{ title: string; content: string; imagePrompt: string | null }> = {};
+      if (title !== undefined) updateData.title = title.trim();
+      if (content !== undefined) updateData.content = content.trim();
+      if (imagePrompt !== undefined) updateData.imagePrompt = imagePrompt;
+
+      const updated = await storage.updateCookbookRecipe(id, updateData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating cookbook recipe:", error);
+      res.status(500).json({ error: "Failed to update recipe" });
+    }
+  });
+
   app.delete("/api/kitchen/cookbook/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = (req.user as any)?.claims?.sub;

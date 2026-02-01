@@ -40,6 +40,7 @@ export interface IStorage {
   getCookbookRecipes(userId: string): Promise<CookbookRecipe[]>;
   getCookbookRecipe(id: number): Promise<CookbookRecipe | null>;
   addToCookbook(data: InsertCookbookRecipe): Promise<CookbookRecipe>;
+  updateCookbookRecipe(id: number, data: Partial<{ title: string; content: string; imagePrompt: string | null }>): Promise<CookbookRecipe | null>;
   deleteCookbookRecipe(id: number): Promise<void>;
 
   // Shopping Lists
@@ -261,6 +262,14 @@ export class DatabaseStorage implements IStorage {
   async addToCookbook(data: InsertCookbookRecipe): Promise<CookbookRecipe> {
     const [recipe] = await db.insert(cookbookRecipes).values(data).returning();
     return recipe;
+  }
+
+  async updateCookbookRecipe(id: number, data: Partial<{ title: string; content: string; imagePrompt: string | null }>): Promise<CookbookRecipe | null> {
+    const [updated] = await db.update(cookbookRecipes)
+      .set(data)
+      .where(eq(cookbookRecipes.id, id))
+      .returning();
+    return updated || null;
   }
 
   async deleteCookbookRecipe(id: number): Promise<void> {
