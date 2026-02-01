@@ -11,13 +11,13 @@ interface MealPlanCardProps {
 
 export function MealPlanCard({ day, mealName, notes, onClick }: MealPlanCardProps) {
   return (
-    <Card className="hover-elevate cursor-pointer" onClick={onClick}>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
+    <Card className="hover-elevate cursor-pointer overflow-hidden" onClick={onClick}>
+      <CardContent className="p-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-primary/10 dark:bg-primary/20 text-primary shrink-0">
             <span className="text-sm font-semibold">{day.slice(0, 2)}</span>
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 overflow-hidden">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               {day}
             </p>
