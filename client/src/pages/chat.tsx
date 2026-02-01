@@ -132,6 +132,9 @@ export default function Chat() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: conversationQueryKey });
       queryClient.invalidateQueries({ queryKey: ["/api/kitchen/conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/shopping-lists"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/cookbook"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/meal-plan"] });
       setStreamingContent("");
     },
     onError: (error) => {
