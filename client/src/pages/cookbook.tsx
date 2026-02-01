@@ -79,7 +79,7 @@ export default function Cookbook() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen-safe bg-background">
       <header className="px-4 py-3 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10 space-y-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">

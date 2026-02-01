@@ -155,22 +155,17 @@ export default function Calendar() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <header className="px-4 py-4 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-              <CalendarDays className="h-5 w-5 text-primary-foreground" />
+    <div className="flex flex-col h-screen-safe bg-background">
+      <header className="px-3 py-3 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+              <CalendarDays className="h-4 w-4 text-primary-foreground" />
             </div>
-            <div>
-              <h1 className="text-lg font-semibold" data-testid="calendar-title">Meal Calendar</h1>
-              <p className="text-xs text-muted-foreground">
-                Plan ahead, remember the past
-              </p>
-            </div>
+            <h1 className="text-base font-semibold truncate" data-testid="calendar-title">Calendar</h1>
           </div>
           
-          <div className="flex gap-1">
+          <div className="flex gap-1 shrink-0">
             <Button
               variant={viewMode === "week" ? "default" : "ghost"}
               size="icon"
@@ -359,44 +354,49 @@ function MonthView({ currentMonth, weeks, weeksWithPlans, weeksWithLists, onSele
             
             <div 
               className={`
-                flex items-center justify-between px-3 py-2 cursor-pointer
+                flex items-center justify-between gap-2 px-2 py-2 cursor-pointer
                 ${hasPlan ? 'bg-primary/5 hover-elevate' : 'bg-muted/10'}
               `}
               onClick={() => hasPlan ? onSelectWeek(weekStart) : null}
               data-testid={`week-row-${weekDateStr}`}
             >
-              <span className="text-xs text-muted-foreground">
-                Week of {format(weekStart, "MMM d")}
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {format(weekStart, "MMM d")}
               </span>
-              <div className="flex gap-2">
+              <div className="flex gap-1 shrink-0">
                 {hasList && (
                   <Button 
                     variant="ghost" 
-                    size="sm"
+                    size="icon"
+                    className="h-7 w-7"
                     onClick={(e) => { e.stopPropagation(); onViewList(weekDateStr); }}
                     data-testid={`view-list-${weekDateStr}`}
+                    title="View shopping list"
                   >
-                    View List
+                    <ShoppingCart className="h-3.5 w-3.5" />
                   </Button>
                 )}
                 {hasPlan ? (
                   <Button 
                     variant="ghost" 
-                    size="sm"
+                    size="icon"
+                    className="h-7 w-7"
                     onClick={(e) => { e.stopPropagation(); onSelectWeek(weekStart); }}
                     data-testid={`view-plan-${weekDateStr}`}
+                    title="View meal plan"
                   >
-                    View Plan
+                    <UtensilsCrossed className="h-3.5 w-3.5" />
                   </Button>
                 ) : (
                   <Button 
                     variant="outline" 
-                    size="sm"
+                    size="icon"
+                    className="h-7 w-7"
                     onClick={(e) => { e.stopPropagation(); onCreatePlan(weekStart); }}
                     disabled={isGenerating}
+                    title="Create meal plan"
                   >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Create
+                    <Plus className="h-3.5 w-3.5" />
                   </Button>
                 )}
               </div>

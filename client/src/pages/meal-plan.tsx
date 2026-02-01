@@ -132,7 +132,7 @@ export default function MealPlan() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen-safe bg-background">
       <Header user={user} title="Weekly Plan" />
 
       <div className="flex-1 overflow-hidden pb-16">
@@ -205,24 +205,24 @@ export default function MealPlan() {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="font-semibold text-lg">
+                <div className="flex items-center justify-between gap-2 mb-4">
+                  <div className="min-w-0">
+                    <h2 className="font-semibold text-base truncate">
                       {isCurrentWeek ? "This Week's Dinners" : `Week of ${format(currentWeek, "MMM d")}`}
                     </h2>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Tap a day to view recipe
                     </p>
                   </div>
                   <Button
                     variant="outline"
-                    size="sm"
+                    size="icon"
                     onClick={() => generateMutation.mutate()}
                     disabled={generateMutation.isPending}
                     data-testid="button-regenerate-plan"
+                    title="Generate new meal plan"
                   >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${generateMutation.isPending ? "animate-spin" : ""}`} />
-                    New Plan
+                    <RefreshCw className={`h-4 w-4 ${generateMutation.isPending ? "animate-spin" : ""}`} />
                   </Button>
                 </div>
 

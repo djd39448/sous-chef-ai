@@ -153,7 +153,7 @@ export default function Chat() {
   const groupedConversations = groupConversationsByDate(allConversations || []);
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen-safe bg-background">
       {sidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-30 md:hidden" 

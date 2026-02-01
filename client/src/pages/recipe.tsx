@@ -288,7 +288,7 @@ export default function Recipe() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col h-screen bg-background">
+      <div className="flex flex-col h-screen-safe bg-background">
         <header className="flex items-center gap-3 px-4 py-3 border-b border-border">
           <Skeleton className="h-8 w-8 rounded-full" />
           <Skeleton className="h-6 w-32" />
@@ -310,7 +310,7 @@ export default function Recipe() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen-safe bg-background">
       {/* Header */}
       <header className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-10">
         <Button 
