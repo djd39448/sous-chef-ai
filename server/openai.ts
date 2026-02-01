@@ -74,6 +74,13 @@ For shopping lists:
 - Include reasonable quantities
 - Don't include ingredients the user already has
 
+4. UPDATE MEAL: Call update_meal when:
+   - User wants to change a specific day's meal (e.g., "make beef fajitas for Tuesday" or "swap Wednesday for pizza")
+   - User says "change Monday to X" or "put tacos on Friday"
+   - User wants to replace ONE specific day without regenerating the whole plan
+   
+   Use the day name (Monday, Tuesday, etc.) and the new meal name. This updates the current week's plan.
+
 Remember: You're here to make dinner decisions FASTER than thinking. Be helpful, not smart. Never argue about what's in their fridge.`;
 
 export const tools: ChatCompletionTool[] = [
@@ -167,6 +174,26 @@ export const tools: ChatCompletionTool[] = [
           }
         },
         required: ["items"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_meal",
+      description: "Update a specific day's meal in the current week's meal plan. Use this when the user wants to change just one day's meal (e.g., 'make beef fajitas for Tuesday' or 'swap Wednesday for pizza').",
+      parameters: {
+        type: "object",
+        properties: {
+          day: { 
+            type: "string", 
+            enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+            description: "The day of the week to update (lowercase)" 
+          },
+          mealName: { type: "string", description: "The new meal name for this day" },
+          notes: { type: "string", description: "Optional notes about cooking time or preparation" }
+        },
+        required: ["day", "mealName"]
       }
     }
   }

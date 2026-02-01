@@ -16,6 +16,7 @@ interface CookbookRecipe {
   title: string;
   content: string;
   imagePrompt: string | null;
+  thumbnailUrl: string | null;
   createdAt: string;
 }
 
@@ -110,6 +111,14 @@ export default function Cookbook() {
                 >
                   <div className="p-4">
                     <div className="flex items-center justify-between gap-3">
+                      {recipe.thumbnailUrl && (
+                        <img 
+                          src={recipe.thumbnailUrl} 
+                          alt={recipe.title}
+                          className="w-12 h-12 rounded-md object-cover flex-shrink-0"
+                          data-testid={`thumbnail-${recipe.id}`}
+                        />
+                      )}
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold truncate">{recipe.title}</h3>
                         <p className="text-xs text-muted-foreground">

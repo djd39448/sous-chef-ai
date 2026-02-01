@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -9,7 +9,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { MealPlanCard, EmptyMealPlan } from "@/components/meal-plan-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
+import { RefreshCw, ShoppingCart, ChevronLeft, ChevronRight, Check, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, addWeeks, subWeeks, startOfWeek, isSameWeek, addDays } from "date-fns";
 
@@ -45,6 +45,9 @@ export default function MealPlan() {
   const [, navigate] = useLocation();
   
   const [currentWeek, setCurrentWeek] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [approvedDays, setApprovedDays] = useState<Set<number>>(new Set());
+  const [isEditMode, setIsEditMode] = useState(false);
+  
   const weekStartDate = getWeekStartDate(currentWeek);
   const isCurrentWeek = isSameWeek(currentWeek, new Date(), { weekStartsOn: 1 });
   const weekLabel = `${format(currentWeek, "MMM d")} - ${format(addDays(currentWeek, 6), "MMM d")}`;
@@ -81,6 +84,34 @@ export default function MealPlan() {
     },
   });
 
+  const regenerateSpecificDaysMutation = useMutation({
+    mutationFn: async (daysToRegenerate: number[]) => {
+      const response = await apiRequest("POST", "/api/kitchen/regenerate-days", { 
+        weekStartDate,
+        daysToRegenerate 
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/week", weekStartDate] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/meal-plan"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/calendar"] });
+      setApprovedDays(new Set());
+      setIsEditMode(false);
+      toast({
+        title: "Days regenerated!",
+        description: "New meal suggestions are ready.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Couldn't regenerate",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const generateShoppingListMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/kitchen/generate-shopping-list", {
@@ -106,6 +137,12 @@ export default function MealPlan() {
       });
     },
   });
+  
+  // Reset approved days when week changes
+  useEffect(() => {
+    setApprovedDays(new Set());
+    setIsEditMode(false);
+  }, [weekStartDate]);
 
   const navigateWeek = (direction: "prev" | "next") => {
     if (direction === "prev") {
@@ -127,7 +164,40 @@ export default function MealPlan() {
   });
 
   const handleDayClick = (dayId: number) => {
-    navigate(`/recipe/${dayId}`);
+    if (!isEditMode) {
+      navigate(`/recipe/${dayId}`);
+    }
+  };
+  
+  const toggleDayApproval = (dayId: number) => {
+    setApprovedDays(prev => {
+      const next = new Set(prev);
+      if (next.has(dayId)) {
+        next.delete(dayId);
+      } else {
+        next.add(dayId);
+      }
+      return next;
+    });
+  };
+  
+  const unapprovedDays = sortedDays.filter(d => !approvedDays.has(d.id));
+  const allApproved = approvedDays.size === sortedDays.length;
+  
+  const handleRegenerateUnapproved = () => {
+    const daysToRegenerate = unapprovedDays.map(d => d.dayOfWeek);
+    if (daysToRegenerate.length > 0) {
+      regenerateSpecificDaysMutation.mutate(daysToRegenerate);
+    }
+  };
+  
+  const handleFinalizePlan = () => {
+    setIsEditMode(false);
+    setApprovedDays(new Set());
+    toast({
+      title: "Meal plan finalized!",
+      description: "Your weekly dinner plan is ready.",
+    });
   };
 
   return (
@@ -209,42 +279,92 @@ export default function MealPlan() {
                       {isCurrentWeek ? "This Week's Dinners" : `Week of ${format(currentWeek, "MMM d")}`}
                     </h2>
                     <p className="text-xs text-muted-foreground">
-                      Tap a day to view recipe
+                      {isEditMode 
+                        ? "Check meals you want to keep, regenerate the rest"
+                        : "Tap a day to view recipe"
+                      }
                     </p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => generateMutation.mutate()}
-                    disabled={generateMutation.isPending}
-                    data-testid="button-regenerate-plan"
-                    title="Generate new meal plan"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${generateMutation.isPending ? "animate-spin" : ""}`} />
-                  </Button>
+                  <div className="flex gap-1">
+                    {isEditMode ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setIsEditMode(false);
+                          setApprovedDays(new Set());
+                        }}
+                        data-testid="button-cancel-edit"
+                      >
+                        Cancel
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsEditMode(true)}
+                        data-testid="button-edit-plan"
+                      >
+                        Edit Plan
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-3 mb-6">
                   {sortedDays.map((day) => (
                     <MealPlanCard
                       key={day.id}
+                      dayId={day.id}
                       day={DAY_NAMES[day.dayOfWeek]}
                       mealName={day.mealName}
                       notes={day.notes}
                       onClick={() => handleDayClick(day.id)}
+                      showCheckbox={isEditMode}
+                      checked={approvedDays.has(day.id)}
+                      onCheckedChange={() => toggleDayApproval(day.id)}
                     />
                   ))}
                 </div>
-
-                <Button
-                  className="w-full"
-                  onClick={() => generateShoppingListMutation.mutate()}
-                  disabled={generateShoppingListMutation.isPending}
-                  data-testid="button-generate-shopping-list"
-                >
-                  <ShoppingCart className="h-4 w-4 mr-2" />
-                  {generateShoppingListMutation.isPending ? "Creating..." : "Add To Shopping List"}
-                </Button>
+                
+                {isEditMode ? (
+                  <div className="space-y-2">
+                    {unapprovedDays.length > 0 && (
+                      <Button
+                        className="w-full"
+                        variant="outline"
+                        onClick={handleRegenerateUnapproved}
+                        disabled={regenerateSpecificDaysMutation.isPending}
+                        data-testid="button-regenerate-unchecked"
+                      >
+                        <RotateCcw className={`h-4 w-4 mr-2 ${regenerateSpecificDaysMutation.isPending ? "animate-spin" : ""}`} />
+                        {regenerateSpecificDaysMutation.isPending 
+                          ? "Regenerating..." 
+                          : `Regenerate ${unapprovedDays.length} Unchecked Day${unapprovedDays.length > 1 ? 's' : ''}`
+                        }
+                      </Button>
+                    )}
+                    <Button
+                      className="w-full"
+                      onClick={handleFinalizePlan}
+                      disabled={!allApproved}
+                      data-testid="button-finalize-plan"
+                    >
+                      <Check className="h-4 w-4 mr-2" />
+                      {allApproved ? "Finalize Plan" : `Approve all ${sortedDays.length} days to finalize`}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    className="w-full"
+                    onClick={() => generateShoppingListMutation.mutate()}
+                    disabled={generateShoppingListMutation.isPending}
+                    data-testid="button-generate-shopping-list"
+                  >
+                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    {generateShoppingListMutation.isPending ? "Creating..." : "Add To Shopping List"}
+                  </Button>
+                )}
               </>
             )}
         </div>

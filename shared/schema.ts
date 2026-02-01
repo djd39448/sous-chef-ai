@@ -225,6 +225,7 @@ export const cookbookRecipes = pgTable("cookbook_recipes", {
   title: text("title").notNull(),
   content: text("content").notNull(),
   imagePrompt: text("image_prompt"),
+  thumbnailUrl: text("thumbnail_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

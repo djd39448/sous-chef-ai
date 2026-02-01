@@ -84,6 +84,16 @@ Preferred communication style: Simple, everyday language.
 - **Cookbook-First Recipe Loading**: Recipe generation checks cookbook first and uses existing recipes for consistency before creating new ones
 - **Editable Cookbook Recipes**: Individual cookbook recipes can be opened and edited via /cookbook/:id route
 
+### Recent Changes (Feb 2026)
+- **Chat Auto-Titling**: Conversations are automatically titled from the user's first message instead of generic "Kitchen Chat"
+- **Fresh Chat on Login**: Each session starts with a new conversation instead of loading the previous one
+- **Calendar Read-Only**: Calendar tab is now drill-down only; plan generation redirects to Plan tab
+- **Recipe Thumbnails**: Cookbook recipes now store thumbnailUrl to avoid regenerating images on repeat views
+- **Plan Tab Edit Mode**: New "Edit Plan" button with checkboxes for approving individual days
+- **Selective Regeneration**: Regenerate only unchecked/unapproved days while keeping approved meals
+- **AI Update Meal Tool**: New update_meal tool allows changing specific day meals via chat (e.g., "make beef fajitas for Tuesday")
+- **Ingredient Helper**: Cookbook recipe editor now has quick-add ingredient UI with quantity/unit dropdowns and ingredient suggestions from CFO
+
 ### Authentication Flow
 - Replit Auth handles user authentication via OIDC
 - Sessions stored in PostgreSQL with 1-week TTL

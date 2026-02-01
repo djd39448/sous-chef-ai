@@ -7,14 +7,123 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Save, RefreshCw, Camera, Pencil, X } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, Save, RefreshCw, Camera, Pencil, X, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const COMMON_UNITS = [
+  { value: "cup", label: "cup" },
+  { value: "tbsp", label: "tbsp" },
+  { value: "tsp", label: "tsp" },
+  { value: "oz", label: "oz" },
+  { value: "lb", label: "lb" },
+  { value: "each", label: "each" },
+  { value: "clove", label: "clove" },
+  { value: "slice", label: "slice" },
+  { value: "can", label: "can" },
+  { value: "package", label: "pkg" },
+];
+
+const COMMON_QUANTITIES = ["1/4", "1/3", "1/2", "2/3", "3/4", "1", "1.5", "2", "3", "4"];
+
+interface IngredientHelperProps {
+  onInsert: (ingredient: string) => void;
+}
+
+function IngredientHelper({ onInsert }: IngredientHelperProps) {
+  const [quantity, setQuantity] = useState("1");
+  const [unit, setUnit] = useState("cup");
+  const [ingredientName, setIngredientName] = useState("");
+  
+  const { data: suggestions } = useQuery<{ canonical_name: string; display_name: string }[]>({
+    queryKey: ["/api/kitchen/ingredient-suggestions"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const handleInsert = () => {
+    if (!ingredientName.trim()) return;
+    const formatted = `${quantity} ${unit} ${ingredientName.trim()}`;
+    onInsert(formatted);
+    setIngredientName("");
+  };
+
+  const quickAdd = (name: string) => {
+    const formatted = `${quantity} ${unit} ${name}`;
+    onInsert(formatted);
+  };
+
+  return (
+    <div className="p-3 rounded-lg border bg-muted/30 space-y-3">
+      <p className="text-xs font-medium text-muted-foreground">Quick Add Ingredient</p>
+      <div className="flex gap-2 flex-wrap">
+        <Select value={quantity} onValueChange={setQuantity}>
+          <SelectTrigger className="w-20" data-testid="select-quantity">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {COMMON_QUANTITIES.map(q => (
+              <SelectItem key={q} value={q}>{q}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        
+        <Select value={unit} onValueChange={setUnit}>
+          <SelectTrigger className="w-24" data-testid="select-unit">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {COMMON_UNITS.map(u => (
+              <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        
+        <Input 
+          value={ingredientName}
+          onChange={e => setIngredientName(e.target.value)}
+          placeholder="ingredient name"
+          className="flex-1 min-w-[120px]"
+          onKeyDown={e => e.key === 'Enter' && handleInsert()}
+          data-testid="input-ingredient-name"
+        />
+        
+        <Button 
+          size="icon" 
+          onClick={handleInsert}
+          disabled={!ingredientName.trim()}
+          data-testid="button-add-ingredient"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+      
+      {suggestions && suggestions.length > 0 && (
+        <div className="flex gap-1 flex-wrap">
+          <span className="text-xs text-muted-foreground mr-1">Quick:</span>
+          {suggestions.slice(0, 8).map(s => (
+            <Button
+              key={s.canonical_name}
+              variant="outline"
+              size="sm"
+              className="h-6 text-xs px-2"
+              onClick={() => quickAdd(s.display_name || s.canonical_name)}
+              data-testid={`quick-ingredient-${s.canonical_name}`}
+            >
+              {s.display_name || s.canonical_name}
+            </Button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface CookbookRecipe {
   id: number;
   title: string;
   content: string;
   imagePrompt: string | null;
+  thumbnailUrl: string | null;
   createdAt: string;
 }
 
@@ -75,10 +184,15 @@ export default function CookbookRecipe() {
   const regenerateImage = async (prompt: string) => {
     setIsGeneratingImage(true);
     try {
-      const res = await apiRequest("POST", "/api/kitchen/regenerate-image", { prompt });
+      const res = await apiRequest("POST", "/api/kitchen/regenerate-image", { 
+        prompt,
+        cookbookRecipeId: recipeId 
+      });
       const data = await res.json();
       if (data.imageUrl) {
         setRecipeImageUrl(data.imageUrl);
+        // Invalidate the query to update the cached thumbnailUrl
+        queryClient.invalidateQueries({ queryKey: ["/api/kitchen/cookbook", recipeId] });
       }
     } catch (error) {
       console.error("Failed to regenerate image:", error);
@@ -86,6 +200,13 @@ export default function CookbookRecipe() {
       setIsGeneratingImage(false);
     }
   };
+  
+  // Use saved thumbnail if available
+  useEffect(() => {
+    if (recipe?.thumbnailUrl && !recipeImageUrl) {
+      setRecipeImageUrl(recipe.thumbnailUrl);
+    }
+  }, [recipe?.thumbnailUrl]);
 
   const handleSave = () => {
     if (!editedTitle.trim() || !editedContent.trim()) {
@@ -254,13 +375,30 @@ export default function CookbookRecipe() {
 
           <div className="p-4">
             {isEditing ? (
-              <Textarea
-                value={editedContent}
-                onChange={(e) => setEditedContent(e.target.value)}
-                className="min-h-[400px] font-mono text-sm"
-                placeholder="Recipe content in markdown format..."
-                data-testid="input-recipe-content"
-              />
+              <div className="space-y-3">
+                <IngredientHelper 
+                  onInsert={(text) => {
+                    setEditedContent(prev => {
+                      const lines = prev.split('\n');
+                      const ingredientsIdx = lines.findIndex(l => l.toLowerCase().includes('## ingredients'));
+                      if (ingredientsIdx >= 0) {
+                        const nextSectionIdx = lines.findIndex((l, i) => i > ingredientsIdx && l.startsWith('## '));
+                        const insertIdx = nextSectionIdx > 0 ? nextSectionIdx : lines.length;
+                        lines.splice(insertIdx, 0, `- ${text}`);
+                        return lines.join('\n');
+                      }
+                      return prev + `\n- ${text}`;
+                    });
+                  }}
+                />
+                <Textarea
+                  value={editedContent}
+                  onChange={(e) => setEditedContent(e.target.value)}
+                  className="min-h-[400px] font-mono text-sm"
+                  placeholder="Recipe content in markdown format..."
+                  data-testid="input-recipe-content"
+                />
+              </div>
             ) : (
               <div className="prose prose-sm dark:prose-invert max-w-none" data-testid="recipe-content">
                 {renderContent(recipe.content)}

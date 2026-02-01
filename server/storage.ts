@@ -40,7 +40,7 @@ export interface IStorage {
   getCookbookRecipes(userId: string): Promise<CookbookRecipe[]>;
   getCookbookRecipe(id: number): Promise<CookbookRecipe | null>;
   addToCookbook(data: InsertCookbookRecipe): Promise<CookbookRecipe>;
-  updateCookbookRecipe(id: number, data: Partial<{ title: string; content: string; imagePrompt: string | null }>): Promise<CookbookRecipe | null>;
+  updateCookbookRecipe(id: number, data: Partial<{ title: string; content: string; imagePrompt: string | null; thumbnailUrl: string | null }>): Promise<CookbookRecipe | null>;
   deleteCookbookRecipe(id: number): Promise<void>;
 
   // Shopping Lists
@@ -59,6 +59,7 @@ export interface IStorage {
   getOrCreateConversation(userId: string): Promise<KitchenConversation & { messages: KitchenMessage[] }>;
   getAllConversations(userId: string): Promise<KitchenConversation[]>;
   createNewConversation(userId: string, title?: string): Promise<KitchenConversation>;
+  updateConversationTitle(conversationId: number, title: string): Promise<void>;
   addMessage(data: InsertKitchenMessage): Promise<KitchenMessage>;
   getMessages(conversationId: number): Promise<KitchenMessage[]>;
 
@@ -264,7 +265,7 @@ export class DatabaseStorage implements IStorage {
     return recipe;
   }
 
-  async updateCookbookRecipe(id: number, data: Partial<{ title: string; content: string; imagePrompt: string | null }>): Promise<CookbookRecipe | null> {
+  async updateCookbookRecipe(id: number, data: Partial<{ title: string; content: string; imagePrompt: string | null; thumbnailUrl: string | null }>): Promise<CookbookRecipe | null> {
     const [updated] = await db.update(cookbookRecipes)
       .set(data)
       .where(eq(cookbookRecipes.id, id))
@@ -418,6 +419,12 @@ export class DatabaseStorage implements IStorage {
       .values({ userId, title: title || "New Chat" })
       .returning();
     return conversation;
+  }
+
+  async updateConversationTitle(conversationId: number, title: string): Promise<void> {
+    await db.update(kitchenConversations)
+      .set({ title })
+      .where(eq(kitchenConversations.id, conversationId));
   }
 
   async getConversationById(conversationId: number, userId: string): Promise<(KitchenConversation & { messages: KitchenMessage[] }) | null> {

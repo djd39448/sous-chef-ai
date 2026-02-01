@@ -18,8 +18,9 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const conversation = await storage.getOrCreateConversation(userId);
-      res.json(conversation);
+      // Always create a fresh conversation when accessing without a specific ID
+      const conversation = await storage.createNewConversation(userId, "New Chat");
+      res.json({ ...conversation, messages: [] });
     } catch (error) {
       console.error("Error fetching conversation:", error);
       res.status(500).json({ error: "Failed to fetch conversation" });
@@ -44,7 +45,7 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const conversation = await storage.createNewConversation(userId, "Kitchen Chat");
+      const conversation = await storage.createNewConversation(userId, "New Chat");
       res.json(conversation);
     } catch (error) {
       console.error("Error creating conversation:", error);
@@ -94,6 +95,14 @@ export async function registerRoutes(
         role: "user",
         content,
       });
+
+      // Auto-generate conversation title from first message
+      if (conversation.title === "New Chat" || conversation.title === "Kitchen Chat") {
+        // Generate a short title from the first message (max 40 chars)
+        const titleWords = content.trim().split(/\s+/).slice(0, 6).join(' ');
+        const title = titleWords.length > 40 ? titleWords.substring(0, 37) + '...' : titleWords;
+        await storage.updateConversationTitle(conversation.id, title || "Chat");
+      }
 
       // Get user's ingredients
       const ingredients = await storage.getIngredients(userId);
@@ -201,6 +210,59 @@ export async function registerRoutes(
               });
             }
             return `Created meal plan with ${meals.length} meals`;
+          }
+
+          if (name === "update_meal") {
+            const { day, mealName, notes } = args as { day: string; mealName: string; notes?: string };
+            const dayNameToNumber: Record<string, number> = {
+              sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+              thursday: 4, friday: 5, saturday: 6
+            };
+            const dayOfWeek = dayNameToNumber[day.toLowerCase()];
+            
+            if (dayOfWeek === undefined) {
+              return `Invalid day: ${day}`;
+            }
+
+            // Get current week's meal plan
+            const currentWeekStart = getWeekStartDate();
+            let mealPlan = await storage.getMealPlanByWeek(userId, currentWeekStart);
+            
+            if (!mealPlan) {
+              // Create a new meal plan if none exists
+              mealPlan = await storage.createMealPlanForWeek({
+                userId,
+                weekStartDate: currentWeekStart,
+              });
+              // Initialize with the new meal
+              await storage.addMealPlanDay({
+                mealPlanId: mealPlan.id,
+                dayOfWeek,
+                mealName,
+                notes: notes || null,
+              });
+              return `Added ${mealName} for ${day}. Created a new meal plan for this week.`;
+            }
+
+            // Find existing day and update or create
+            const existingDay = mealPlan.days.find(d => d.dayOfWeek === dayOfWeek);
+            if (existingDay) {
+              await storage.updateMealPlanDay(existingDay.id, {
+                mealName,
+                notes: notes || null,
+                recipeContent: null, // Clear cached recipe so new one generates
+                recipeImagePrompt: null,
+              });
+              return `Updated ${day} to ${mealName}`;
+            } else {
+              await storage.addMealPlanDay({
+                mealPlanId: mealPlan.id,
+                dayOfWeek,
+                mealName,
+                notes: notes || null,
+              });
+              return `Added ${mealName} for ${day}`;
+            }
           }
 
           if (name === "create_shopping_list") {
@@ -466,6 +528,131 @@ Where dayOfWeek is: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Fr
     } catch (error) {
       console.error("Error generating meal plan:", error);
       res.status(500).json({ error: "Failed to generate meal plan" });
+    }
+  });
+
+  // Regenerate specific days of an existing meal plan
+  app.post("/api/kitchen/regenerate-days", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { weekStartDate, daysToRegenerate } = req.body;
+      if (!weekStartDate || !Array.isArray(daysToRegenerate) || daysToRegenerate.length === 0) {
+        return res.status(400).json({ error: "Invalid request - weekStartDate and daysToRegenerate required" });
+      }
+
+      // Get existing meal plan for the week
+      const existingPlan = await storage.getMealPlanByWeek(userId, weekStartDate);
+      if (!existingPlan) {
+        return res.status(404).json({ error: "No meal plan found for this week" });
+      }
+
+      // Get ingredients and cookbook for context
+      const ingredients = await storage.getIngredients(userId);
+      const ingredientList = ingredients.map(i => i.name).join(", ") || "common pantry items";
+      
+      const cookbookRecipes = await storage.getCookbookRecipes(userId);
+      const cookbookContext = cookbookRecipes.length > 0 
+        ? `User's saved cookbook recipes (prefer these): ${cookbookRecipes.slice(0, 20).map(r => r.title).join(", ")}.` 
+        : "";
+
+      // Get current meals to avoid duplicates
+      const currentMeals = existingPlan.days.filter(d => !daysToRegenerate.includes(d.dayOfWeek)).map(d => d.mealName);
+      const avoidMeals = currentMeals.length > 0 ? `Avoid these meals (already planned): ${currentMeals.join(", ")}.` : "";
+
+      const dayNames: Record<number, string> = { 0: "Sunday", 1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday", 5: "Friday", 6: "Saturday" };
+      const daysToGenerateStr = daysToRegenerate.map(d => dayNames[d]).join(", ");
+
+      const cuisineStyles = ["Italian", "Mexican", "Asian", "American comfort", "Mediterranean", "Southern", "Tex-Mex", "Greek", "Indian-inspired", "French bistro"];
+      const randomCuisine = cuisineStyles[Math.floor(Math.random() * cuisineStyles.length)];
+      const seasonalFocus = new Date().getMonth() >= 9 || new Date().getMonth() <= 2 ? "hearty, warming" : "fresh, lighter";
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4.1",
+        temperature: 0.95,
+        messages: [
+          {
+            role: "system",
+            content: `You are a creative meal planning assistant. Generate new meal suggestions for specific days. ${cookbookContext} ${avoidMeals}
+
+IMPORTANT: You MUST respond with valid JSON containing a "meals" array.`
+          },
+          {
+            role: "user",
+            content: `Generate new UNIQUE dinner suggestions for these days only: ${daysToGenerateStr}. 
+            
+This week, lean toward ${randomCuisine} influences with ${seasonalFocus} dishes. Available ingredients: ${ingredientList}.
+
+Be creative! Suggest interesting, varied meals - different from what's already planned.
+
+Return JSON in this exact format:
+{
+  "meals": [
+    {"dayOfWeek": <number>, "mealName": "<meal name>", "notes": "<cooking time>"}
+  ]
+}
+
+Where dayOfWeek is: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
+Only include the days I asked for: ${daysToRegenerate.join(", ")}`
+          }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 512,
+      });
+
+      const content = response.choices[0]?.message?.content || "{}";
+      let newMeals: { dayOfWeek: number; mealName: string; notes?: string }[] = [];
+      try {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) {
+          newMeals = parsed;
+        } else if (parsed.meals && Array.isArray(parsed.meals)) {
+          newMeals = parsed.meals;
+        }
+      } catch (e) {
+        console.error("Failed to parse regenerated meals:", e, content);
+      }
+
+      // Filter to only the requested days
+      newMeals = newMeals.filter(m => 
+        typeof m.dayOfWeek === 'number' && 
+        typeof m.mealName === 'string' && 
+        daysToRegenerate.includes(m.dayOfWeek)
+      );
+
+      // Fallback if parsing failed
+      if (newMeals.length === 0) {
+        const fallbackMeals = [
+          "Grilled Chicken with Vegetables", "Pasta Primavera", "Beef Tacos", 
+          "Salmon with Quinoa", "Veggie Stir-Fry", "Pulled Pork Sandwiches", "Roast Chicken"
+        ];
+        newMeals = daysToRegenerate.map((day, idx) => ({
+          dayOfWeek: day,
+          mealName: fallbackMeals[idx % fallbackMeals.length],
+          notes: "30 min"
+        }));
+      }
+
+      // Update each day in the meal plan
+      for (const meal of newMeals) {
+        const existingDay = existingPlan.days.find(d => d.dayOfWeek === meal.dayOfWeek);
+        if (existingDay) {
+          await storage.updateMealPlanDay(existingDay.id, {
+            mealName: meal.mealName,
+            notes: meal.notes || null,
+            recipeContent: null,
+            recipeImagePrompt: null,
+          });
+        }
+      }
+
+      // Return the updated plan
+      const updatedPlan = await storage.getMealPlanByWeek(userId, weekStartDate);
+      res.json(updatedPlan);
+    } catch (error) {
+      console.error("Error regenerating days:", error);
+      res.status(500).json({ error: "Failed to regenerate days" });
     }
   });
 
@@ -899,6 +1086,41 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
     }
   });
 
+  // Get unique ingredient suggestions from CFO and ingredient memory
+  app.get("/api/kitchen/ingredient-suggestions", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      // Get ingredients from CFO food_items table
+      const foodItems = await storage.getFoodItemsByRole(userId, "inventory");
+      const cfoSuggestions = foodItems.map(f => ({
+        canonical_name: f.canonicalName,
+        display_name: f.displayName || f.canonicalName
+      }));
+
+      // Get ingredients from legacy ingredient memory
+      const ingredients = await storage.getIngredients(userId);
+      const memorySuggestions = ingredients.map(i => ({
+        canonical_name: i.name.toLowerCase(),
+        display_name: i.name
+      }));
+
+      // Merge and deduplicate
+      const seen = new Set<string>();
+      const suggestions = [...cfoSuggestions, ...memorySuggestions].filter(s => {
+        if (seen.has(s.canonical_name)) return false;
+        seen.add(s.canonical_name);
+        return true;
+      });
+
+      res.json(suggestions.slice(0, 20));
+    } catch (error) {
+      console.error("Error fetching ingredient suggestions:", error);
+      res.status(500).json({ error: "Failed to fetch suggestions" });
+    }
+  });
+
   // =============== COOKBOOK ===============
   app.get("/api/kitchen/cookbook", isAuthenticated, async (req: Request, res: Response) => {
     try {
@@ -1015,7 +1237,7 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
       const userId = (req.user as any)?.claims?.sub;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const { prompt } = req.body;
+      const { prompt, cookbookRecipeId } = req.body;
       if (!prompt) return res.status(400).json({ error: "Image prompt required" });
 
       const imageResponse = await openai.images.generate({
@@ -1031,6 +1253,18 @@ Keep responses friendly and practical. Default to family-friendly, 30-minute mea
       }
 
       const imageUrl = `data:image/png;base64,${imageBase64}`;
+      
+      // Save thumbnail to cookbook recipe if ID is provided
+      if (cookbookRecipeId) {
+        const recipeId = parseInt(cookbookRecipeId, 10);
+        if (!isNaN(recipeId)) {
+          const recipe = await storage.getCookbookRecipe(recipeId);
+          if (recipe && recipe.userId === userId) {
+            await storage.updateCookbookRecipe(recipeId, { thumbnailUrl: imageUrl });
+          }
+        }
+      }
+      
       res.json({ imageUrl });
     } catch (error) {
       console.error("Error regenerating image:", error);

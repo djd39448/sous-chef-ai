@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { BottomNav } from "@/components/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarDays, ChevronLeft, ChevronRight, UtensilsCrossed, ShoppingCart, Grid3X3, List, Plus } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { CalendarDays, ChevronLeft, ChevronRight, UtensilsCrossed, ShoppingCart, Grid3X3, List } from "lucide-react";
 import { 
   format, 
   addDays, 
@@ -70,7 +68,6 @@ type ViewMode = "week" | "month";
 export default function Calendar() {
   useDocumentTitle("Calendar - Sous Chef AI");
   const [, navigate] = useLocation();
-  const { toast } = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [currentWeek, setCurrentWeek] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
@@ -93,29 +90,6 @@ export default function Calendar() {
       return res.json();
     },
     enabled: viewMode === "week",
-  });
-
-  const generateMutation = useMutation({
-    mutationFn: async (targetWeekStartDate: string) => {
-      const response = await apiRequest("POST", "/api/kitchen/generate-meal-plan", { weekStartDate: targetWeekStartDate });
-      return response.json();
-    },
-    onSuccess: (_, targetWeekStartDate) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/week", targetWeekStartDate] });
-      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/meal-plan"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/kitchen/calendar"] });
-      toast({
-        title: "Meal plan created!",
-        description: "Your weekly dinner plan is ready.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Couldn't generate plan",
-        description: "Please try again.",
-        variant: "destructive",
-      });
-    },
   });
 
   const weeksWithPlans = new Set(calendarData?.mealPlans?.map(p => p.weekStartDate) || []);
@@ -251,8 +225,6 @@ export default function Calendar() {
               weeksWithLists={weeksWithLists}
               onSelectWeek={selectWeek}
               onViewList={(weekDateStr) => navigate(`/shopping?week=${weekDateStr}`)}
-              onCreatePlan={(weekStart) => generateMutation.mutate(getWeekStartDate(weekStart))}
-              isGenerating={generateMutation.isPending}
             />
           ) : weekLoading ? (
             <div className="space-y-4">
@@ -275,8 +247,6 @@ export default function Calendar() {
             <EmptyWeekState 
               isCurrentWeek={isCurrentWeek}
               currentWeek={currentWeek}
-              onCreatePlan={() => generateMutation.mutate(weekStartDate)}
-              isGenerating={generateMutation.isPending}
               navigate={navigate}
             />
           )}
@@ -295,11 +265,9 @@ interface MonthViewProps {
   weeksWithLists: Set<string>;
   onSelectWeek: (weekStart: Date) => void;
   onViewList: (weekStartDate: string) => void;
-  onCreatePlan: (weekStart: Date) => void;
-  isGenerating: boolean;
 }
 
-function MonthView({ currentMonth, weeks, weeksWithPlans, weeksWithLists, onSelectWeek, onViewList, onCreatePlan, isGenerating }: MonthViewProps) {
+function MonthView({ currentMonth, weeks, weeksWithPlans, weeksWithLists, onSelectWeek, onViewList }: MonthViewProps) {
   const today = new Date();
   
   return (
@@ -387,16 +355,9 @@ function MonthView({ currentMonth, weeks, weeksWithPlans, weeksWithLists, onSele
                     <UtensilsCrossed className="h-3.5 w-3.5" />
                   </Button>
                 ) : (
-                  <Button 
-                    variant="outline" 
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={(e) => { e.stopPropagation(); onCreatePlan(weekStart); }}
-                    disabled={isGenerating}
-                    title="Create meal plan"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="h-7 w-7 flex items-center justify-center text-muted-foreground">
+                    <span className="text-xs">—</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -481,12 +442,10 @@ function WeekView({ weekData, currentWeek, navigate }: WeekViewProps) {
 interface EmptyWeekStateProps {
   isCurrentWeek: boolean;
   currentWeek: Date;
-  onCreatePlan: () => void;
-  isGenerating: boolean;
   navigate: (path: string) => void;
 }
 
-function EmptyWeekState({ isCurrentWeek, currentWeek, onCreatePlan, isGenerating, navigate }: EmptyWeekStateProps) {
+function EmptyWeekState({ isCurrentWeek, currentWeek, navigate }: EmptyWeekStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -495,15 +454,14 @@ function EmptyWeekState({ isCurrentWeek, currentWeek, onCreatePlan, isGenerating
       <h3 className="font-semibold mb-2">No meals planned</h3>
       <p className="text-muted-foreground text-sm max-w-xs mb-4">
         {isCurrentWeek 
-          ? "Create a meal plan for this week to get started."
+          ? "Go to the Plan tab to create a meal plan for this week."
           : `No meal plan for the week of ${format(currentWeek, "MMM d")}.`}
       </p>
       <Button 
-        onClick={onCreatePlan} 
-        disabled={isGenerating}
-        data-testid="button-create-plan"
+        onClick={() => navigate("/plan")} 
+        data-testid="button-go-to-plan"
       >
-        {isGenerating ? "Creating..." : "Create Meal Plan"}
+        Go to Plan
       </Button>
     </div>
   );
