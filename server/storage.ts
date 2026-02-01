@@ -113,10 +113,20 @@ export class DatabaseStorage implements IStorage {
 
   // =============== MEAL PLANS ===============
   async getMealPlan(userId: string): Promise<(MealPlan & { days: MealPlanDay[] }) | null> {
+    // Get current week's start date
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+    const weekStart = new Date(now);
+    weekStart.setDate(diff);
+    const currentWeekStartDate = weekStart.toISOString().split('T')[0];
+    
+    // First try to get current week's plan
     const [plan] = await db.select().from(mealPlans)
-      .where(eq(mealPlans.userId, userId))
-      .orderBy(desc(mealPlans.createdAt))
-      .limit(1);
+      .where(and(
+        eq(mealPlans.userId, userId),
+        eq(mealPlans.weekStartDate, currentWeekStartDate)
+      ));
 
     if (!plan) return null;
 

@@ -504,6 +504,32 @@ Where dayOfWeek is: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Fr
       const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
       const dayName = DAY_NAMES[day.dayOfWeek];
 
+      // Check cookbook for existing recipe first
+      const cookbookRecipes = await storage.getCookbookRecipes(userId);
+      const existingRecipe = cookbookRecipes.find(r => 
+        r.title.toLowerCase().trim() === day.mealName.toLowerCase().trim()
+      );
+
+      // If recipe exists in cookbook, return it directly without regenerating
+      if (existingRecipe && existingRecipe.content) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        
+        // Stream the existing recipe
+        res.write(`data: ${JSON.stringify({ content: existingRecipe.content })}\n\n`);
+        
+        // Update the meal plan day with the cookbook recipe
+        await storage.updateMealPlanDay(dayId, { 
+          recipeContent: existingRecipe.content, 
+          recipeImagePrompt: existingRecipe.imagePrompt 
+        });
+        
+        res.write(`data: ${JSON.stringify({ imagePrompt: existingRecipe.imagePrompt, done: true })}\n\n`);
+        res.end();
+        return;
+      }
+
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
@@ -551,6 +577,25 @@ Keep it family-friendly and aim for 30 minutes or less. Use lowercase singular i
       // Save recipe to database with image prompt (but don't generate image yet)
       const imagePrompt = `Professional food photography of ${day.mealName}. Photorealistic, appetizing presentation, warm lighting, shallow depth of field, garnished beautifully, served on a nice plate, restaurant quality presentation.`;
       await storage.updateMealPlanDay(dayId, { recipeContent: fullRecipe, recipeImagePrompt: imagePrompt });
+
+      // Auto-save to cookbook if not already there
+      try {
+        const existingCookbook = await storage.getCookbookRecipes(userId);
+        const alreadySaved = existingCookbook.some(r => 
+          r.title.toLowerCase().trim() === day.mealName.toLowerCase().trim()
+        );
+        if (!alreadySaved) {
+          await storage.addToCookbook({
+            userId,
+            title: day.mealName,
+            content: fullRecipe,
+            imagePrompt,
+          });
+        }
+      } catch (cookbookError) {
+        console.error("Failed to auto-save recipe to cookbook:", cookbookError);
+        // Don't fail the whole request if cookbook save fails
+      }
 
       // Send the image prompt so client can generate on demand
       res.write(`data: ${JSON.stringify({ imagePrompt, done: true })}\n\n`);
