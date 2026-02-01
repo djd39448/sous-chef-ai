@@ -7,7 +7,6 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Header } from "@/components/header";
 import { BottomNav } from "@/components/bottom-nav";
 import { MealPlanCard, EmptyMealPlan } from "@/components/meal-plan-card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
@@ -135,9 +134,8 @@ export default function MealPlan() {
     <div className="flex flex-col h-screen-safe bg-background">
       <Header user={user} title="Weekly Plan" />
 
-      <div className="flex-1 overflow-hidden pb-16">
-        <ScrollArea className="h-full">
-          <div className="w-full max-w-2xl mx-auto px-4 py-4 overflow-hidden">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden pb-16">
+        <div className="w-full max-w-2xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between gap-2 mb-4 p-2 rounded-lg bg-muted/30">
               <Button
                 variant="ghost"
@@ -249,8 +247,7 @@ export default function MealPlan() {
                 </Button>
               </>
             )}
-          </div>
-        </ScrollArea>
+        </div>
       </div>
 
       <BottomNav />

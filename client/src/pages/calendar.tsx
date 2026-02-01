@@ -6,7 +6,6 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { BottomNav } from "@/components/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CalendarDays, ChevronLeft, ChevronRight, UtensilsCrossed, ShoppingCart, Grid3X3, List, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -242,8 +241,8 @@ export default function Calendar() {
         </div>
       </header>
 
-      <ScrollArea className="flex-1">
-        <div className="max-w-2xl mx-auto px-4 py-4 pb-24">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="w-full max-w-2xl mx-auto px-4 py-4 pb-24">
           {viewMode === "month" ? (
             <MonthView 
               currentMonth={currentMonth}
@@ -282,7 +281,7 @@ export default function Calendar() {
             />
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       <BottomNav />
     </div>
